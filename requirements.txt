@@ -1,0 +1,8 @@
+flask
+flask-cors
+flask-limiter
+flask-pydantic
+pydantic
+pyjwt
+twilio
+python-dotenv
