@@ -5,7 +5,6 @@ pyjwt
 twilio
 python-dotenv
 flask-pymongo
-bson
 pytz
 pillow
 pytesseract
