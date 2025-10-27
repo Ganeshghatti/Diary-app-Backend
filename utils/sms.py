@@ -13,7 +13,7 @@ client = Client(account_sid, auth_token)
 def send_otp(phone, otp):
     try:
         message = client.messages.create(
-            body=f"Your App OTP is {otp}",
+            body=f"Dear User, your registration OTP with DiaryDad is {otp}. Please do not share this OTP with anyone",
             from_=twilio_number,
             to=f"+91{phone}"
         )
