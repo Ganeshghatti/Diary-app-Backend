@@ -162,8 +162,8 @@ def generate_summary():
                         # Update summary
                         diary_obj["summary"] = full_summary.strip()
                         
-                        # Save to database
-                        upsert_diary(user_id, date, diary_obj=diary_obj)
+                        # Save to database (parameter is 'diary', not 'diary_obj')
+                        upsert_diary(user_id, date, diary=diary_obj)
                     else:
                         # Create new diary entry with summary
                         upsert_diary(user_id, date, diary={"summary": full_summary.strip()})
