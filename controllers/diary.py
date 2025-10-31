@@ -7,8 +7,102 @@ from models.diary import (
     get_all_diaries
 )
 from middleware.user_required import user_required
-from utils.timezone import format_datetime_for_response, convert_user_date_to_utc_range, convert_user_month_to_utc_range
+from utils.timezone import format_datetime_for_response, convert_user_date_to_utc_range, convert_user_month_to_utc_range, convert_user_date_to_utc_date_string
 import datetime
+from pinecone import Pinecone
+from openai import OpenAI
+import os
+
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+index = pc.Index("diarydad")
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def create_embedding(text):
+    """Create embedding using OpenAI text-embedding-3-small model"""
+    try:
+        response = openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        raise Exception(f"Failed to create embedding: {str(e)}")
+
+def prepare_text_for_embedding(diary_obj, mood_tracker=None, expense_tracker=None, health_stats=None, date=None):
+    """Prepare text content from diary entry for embedding"""
+    text_parts = []
+    
+    text_parts.append(f"Date: {date}")
+    # Add diary content and summary
+    if diary_obj:
+        if isinstance(diary_obj, dict):
+            if "content" in diary_obj and diary_obj["content"]:
+                text_parts.append(f"Content: {diary_obj['content']}")
+    
+    # Add mood tracker
+    if mood_tracker and isinstance(mood_tracker, list) and len(mood_tracker) > 0:
+        text_parts.append(f"Moods: {', '.join(mood_tracker)}")
+    
+    # Add expense tracker summary
+    if expense_tracker and isinstance(expense_tracker, list) and len(expense_tracker) > 0:
+        expense_summary = []
+        for item in expense_tracker:
+            if isinstance(item, dict) and "name" in item:
+                expense_summary.append(item["name"])
+        if expense_summary:
+            text_parts.append(f"Expenses: {', '.join(expense_summary)}")
+    
+    # Add health stats summary
+    if health_stats and isinstance(health_stats, list) and len(health_stats) > 0:
+        health_summary = []
+        for item in health_stats:
+            if isinstance(item, dict) and "name" in item and "value" in item:
+                health_summary.append(f"{item['name']}: {item['value']}")
+        if health_summary:
+            text_parts.append(f"Health: {', '.join(health_summary)}")
+    
+    # Join all parts
+    combined_text = " | ".join(text_parts)
+    
+    # Return a default text if empty to ensure we always have something to embed
+    return combined_text if combined_text else "Diary entry"
+
+def upsert_to_pinecone(user_id, date, diary_obj, mood_tracker, expense_tracker, health_stats):
+    """Upsert diary entry to Pinecone vector database"""
+    try:
+        # Prepare text for embedding
+        text_to_embed = prepare_text_for_embedding(diary_obj, mood_tracker, expense_tracker, health_stats, date)
+        
+        # Create embedding
+        embedding = create_embedding(text_to_embed)
+        
+        # Create unique vector ID (user_id_date)
+        vector_id = f"{user_id}_{date}"
+        
+        # Prepare metadata
+        metadata = {
+            "user_id": user_id,
+            "date": date,
+            "text": text_to_embed
+        }
+        
+        # Add diary content to metadata if available
+        if diary_obj and isinstance(diary_obj, dict):
+            if "content" in diary_obj:
+                metadata["content"] = diary_obj["content"][:1000]  # Limit metadata size
+        
+        # Upsert to Pinecone
+        index.upsert(
+            vectors=[{
+                "id": vector_id,
+                "values": embedding,
+                "metadata": metadata
+            }]
+        )
+        
+    except Exception as e:
+        # Log error but don't fail the main request
+        print(f"Warning: Failed to upsert to Pinecone: {str(e)}")
 
 @user_required
 def upsert_diary_entry():
@@ -16,9 +110,25 @@ def upsert_diary_entry():
     data = request.get_json()
     user_id = str(g.current_user["_id"])
     
-    # Always use current UTC date (frontend doesn't send date)
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
-    date = now_utc.strftime("%d-%m-%Y")
+    # Get user's timezone from profile
+    user_timezone = g.current_user.get("timezone", "UTC")
+    
+    # Get date from request body (optional)
+    date_input = data.get("date")
+    
+    if date_input:
+        # Validate date format
+        try:
+            datetime.datetime.strptime(date_input, "%d-%m-%Y")
+        except ValueError:
+            return jsonify({"error": "date must be in DD-MM-YYYY format."}), 400
+        
+        # Convert user's date to UTC date string
+        date = convert_user_date_to_utc_date_string(date_input, user_timezone)
+    else:
+        # Use current UTC date if not provided
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        date = now_utc.strftime("%d-%m-%Y")
     
     # Extract diary object (containing content and summary)
     diary_obj = data.get("diary")
@@ -68,6 +178,15 @@ def upsert_diary_entry():
     
     try:
         result = upsert_diary(user_id, date, diary_obj, mood_tracker, expense_tracker, health_stats)
+        
+        # Embed and store in Pinecone vector database
+        # Only embed if there's meaningful content to embed
+        print("Checking if there's meaningful content to embed")
+        if diary_obj or mood_tracker or expense_tracker or health_stats:
+            print("Embedding and storing in Pinecone vector database")
+            upsert_to_pinecone(user_id, date, diary_obj, mood_tracker, expense_tracker, health_stats)
+            print("Embedding and storing in Pinecone vector database completed")
+        
         if result["upserted"]:
             return jsonify({
                 "message": "Diary entry created successfully.",
@@ -79,6 +198,8 @@ def upsert_diary_entry():
                 "message": "Diary entry updated successfully.",
                 "date": date
             }), 200
+        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

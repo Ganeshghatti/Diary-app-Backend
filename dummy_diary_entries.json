@@ -1,0 +1,398 @@
+[
+  {
+    "date": "15-01-2024",
+    "diary": {
+      "content": "Today was absolutely amazing! I woke up feeling refreshed after a good night's sleep. Went for a morning jog in the park and the weather was perfect - sunny but not too hot. Met an old friend at the coffee shop and we caught up on life. She's starting a new business and I'm so proud of her! Had a productive afternoon working on my side project. Feeling motivated and grateful for this beautiful day."
+    },
+    "mood_tracker": ["happy", "energetic", "grateful", "motivated"],
+    "expense_tracker": [
+      {
+        "name": "Coffee with friend",
+        "description": "Morning coffee and pastry",
+        "amount": 450.00
+      },
+      {
+        "name": "Grocery shopping",
+        "description": "Weekly groceries",
+        "amount": 2500.00
+      }
+    ],
+    "health_stats": [
+      {
+        "name": "Steps",
+        "description": "Daily step count",
+        "value": 12500,
+        "unit": "steps"
+      },
+      {
+        "name": "Water Intake",
+        "description": "Daily water consumption",
+        "value": 3.2,
+        "unit": "liters"
+      },
+      {
+        "name": "Sleep Hours",
+        "description": "Hours of sleep last night",
+        "value": 7.5,
+        "unit": "hours"
+      }
+    ]
+  },
+  {
+    "date": "16-01-2024",
+    "diary": {
+      "content": "Had a challenging day at work today. The project deadline is approaching and I'm feeling a bit overwhelmed. My team had a long meeting to discuss the technical challenges we're facing. I stayed late at the office trying to debug a complex issue. But I learned something valuable - sometimes taking a break and coming back with fresh eyes helps. Called my mom in the evening which always cheers me up. Need to manage my time better tomorrow."
+    },
+    "mood_tracker": ["stressed", "determined", "tired"],
+    "expense_tracker": [
+      {
+        "name": "Lunch at office",
+        "description": "Quick lunch",
+        "amount": 280.00
+      },
+      {
+        "name": "Uber ride",
+        "description": "Late night ride home",
+        "amount": 350.00
+      }
+    ],
+    "health_stats": [
+      {
+        "name": "Steps",
+        "description": "Daily step count",
+        "value": 6800,
+        "unit": "steps"
+      },
+      {
+        "name": "Water Intake",
+        "description": "Daily water consumption",
+        "value": 2.1,
+        "unit": "liters"
+      },
+      {
+        "name": "Stress Level",
+        "description": "Self-reported stress (1-10)",
+        "value": 7,
+        "unit": "scale"
+      }
+    ]
+  },
+  {
+    "date": "17-01-2024",
+    "diary": {
+      "content": "Much better day! The debugging issue from yesterday is resolved. Went to the gym in the morning before work - felt really good to get the blood flowing. Had lunch with colleagues and we discussed weekend plans. Someone mentioned a new hiking trail nearby that I want to check out. Reading a fascinating book about productivity in the evening. Learning about the Pomodoro technique. Excited to try it out tomorrow at work."
+    },
+    "mood_tracker": ["calm", "focused", "curious"],
+    "expense_tracker": [
+      {
+        "name": "Gym membership renewal",
+        "description": "Monthly gym fee",
+        "amount": 1500.00
+      },
+      {
+        "name": "Lunch",
+        "description": "Team lunch",
+        "amount": 320.00
+      },
+      {
+        "name": "Book purchase",
+        "description": "Online book order",
+        "amount": 550.00
+      }
+    ],
+    "health_stats": [
+      {
+        "name": "Steps",
+        "description": "Daily step count",
+        "value": 10200,
+        "unit": "steps"
+      },
+      {
+        "name": "Gym workout",
+        "description": "Workout duration",
+        "value": 45,
+        "unit": "minutes"
+      },
+      {
+        "name": "Water Intake",
+        "description": "Daily water consumption",
+        "value": 2.8,
+        "unit": "liters"
+      }
+    ]
+  },
+  {
+    "date": "18-01-2024",
+    "diary": {
+      "content": "Weekend started off great! Went for that hiking trail I heard about - it was breathtaking! The view from the top was worth every step. Met some friendly hikers along the way. Nature always has a way of making me feel centered and grounded. After the hike, treated myself to a nice meal at a local restaurant. Tried a new cuisine - Korean food - and it was delicious! Watched a movie in the evening. Feeling relaxed and ready for a good night's sleep."
+    },
+    "mood_tracker": ["peaceful", "content", "energetic", "happy"],
+    "expense_tracker": [
+      {
+        "name": "Hiking gear",
+        "description": "New hiking boots",
+        "amount": 4500.00
+      },
+      {
+        "name": "Korean restaurant",
+        "description": "Dinner",
+        "amount": 1200.00
+      },
+      {
+        "name": "Movie tickets",
+        "description": "Weekend movie",
+        "amount": 600.00
+      }
+    ],
+    "health_stats": [
+      {
+        "name": "Steps",
+        "description": "Daily step count",
+        "value": 18200,
+        "unit": "steps"
+      },
+      {
+        "name": "Hiking distance",
+        "description": "Trail distance covered",
+        "value": 8.5,
+        "unit": "km"
+      },
+      {
+        "name": "Water Intake",
+        "description": "Daily water consumption",
+        "value": 3.5,
+        "unit": "liters"
+      }
+    ]
+  },
+  {
+    "date": "19-01-2024",
+    "diary": {
+      "content": "Lazy Sunday - exactly what I needed! Slept in, made a big breakfast, and spent most of the day reading. The Pomodoro technique from the book is really interesting - I tried it while doing some house chores and it actually worked! Cleaned my apartment which had been neglected for a while. Called a few friends to catch up. Feeling refreshed and organized. Planning meals for the week ahead. Sometimes doing nothing is exactly what you need."
+    },
+    "mood_tracker": ["relaxed", "content", "peaceful"],
+    "expense_tracker": [
+      {
+        "name": "Groceries",
+        "description": "Weekly meal prep ingredients",
+        "amount": 3200.00
+      }
+    ],
+    "health_stats": [
+      {
+        "name": "Steps",
+        "description": "Daily step count",
+        "value": 4200,
+        "unit": "steps"
+      },
+      {
+        "name": "Sleep Hours",
+        "description": "Hours of sleep",
+        "value": 9.0,
+        "unit": "hours"
+      },
+      {
+        "name": "Water Intake",
+        "description": "Daily water consumption",
+        "value": 2.5,
+        "unit": "liters"
+      }
+    ]
+  },
+  {
+    "date": "20-01-2024",
+    "diary": {
+      "content": "Back to work Monday. Applied the Pomodoro technique today - it really helped me stay focused! Broke down my tasks into 25-minute intervals with short breaks. Felt much more productive than usual. Had a team standup where we discussed the sprint goals. The project is moving along well. In the evening, attended an online course about data science - something I've been wanting to learn. Feeling intellectually stimulated and excited about learning new things."
+    },
+    "mood_tracker": ["focused", "productive", "curious", "motivated"],
+    "expense_tracker": [
+      {
+        "name": "Online course",
+        "description": "Data science course subscription",
+        "amount": 2500.00
+      },
+      {
+        "name": "Coffee",
+        "description": "Morning coffee",
+        "amount": 150.00
+      }
+    ],
+    "health_stats": [
+      {
+        "name": "Steps",
+        "description": "Daily step count",
+        "value": 8900,
+        "unit": "steps"
+      },
+      {
+        "name": "Focus time",
+        "description": "Pomodoro sessions completed",
+        "value": 8,
+        "unit": "sessions"
+      },
+      {
+        "name": "Water Intake",
+        "description": "Daily water consumption",
+        "value": 2.7,
+        "unit": "liters"
+      }
+    ]
+  },
+  {
+    "date": "21-01-2024",
+    "diary": {
+      "content": "Interesting day - had a performance review at work and got really positive feedback! My manager praised my problem-solving skills and teamwork. It felt good to be recognized for the hard work. However, I also received some constructive feedback about communication which I'll work on. After work, went to a networking event - met some interesting people in the tech industry. One person shared their startup journey which was inspiring. Came home feeling motivated and thinking about my career goals."
+    },
+    "mood_tracker": ["proud", "motivated", "inspired", "reflective"],
+    "expense_tracker": [
+      {
+        "name": "Networking event",
+        "description": "Entry ticket and drinks",
+        "amount": 800.00
+      },
+      {
+        "name": "Dinner",
+        "description": "Post-event dinner",
+        "amount": 650.00
+      }
+    ],
+    "health_stats": [
+      {
+        "name": "Steps",
+        "description": "Daily step count",
+        "value": 11000,
+        "unit": "steps"
+      },
+      {
+        "name": "Water Intake",
+        "description": "Daily water consumption",
+        "value": 3.0,
+        "unit": "liters"
+      },
+      {
+        "name": "Social interaction",
+        "description": "Time spent socializing",
+        "value": 3,
+        "unit": "hours"
+      }
+    ]
+  },
+  {
+    "date": "22-01-2024",
+    "diary": {
+      "content": "Feeling a bit under the weather today. Woke up with a slight headache and feeling tired. Decided to take it easy - worked from home. Did some light stretching and drank lots of water. Sometimes your body tells you to slow down and you should listen. Watched some comfort shows and took several naps throughout the day. Feeling better towards the evening. Tomorrow I'll get back to my regular routine. Self-care is important."
+    },
+    "mood_tracker": ["tired", "calm", "reflective"],
+    "expense_tracker": [
+      {
+        "name": "Medication",
+        "description": "Headache relief",
+        "amount": 120.00
+      },
+      {
+        "name": "Soup delivery",
+        "description": "Comfort food",
+        "amount": 350.00
+      }
+    ],
+    "health_stats": [
+      {
+        "name": "Steps",
+        "description": "Daily step count",
+        "value": 2100,
+        "unit": "steps"
+      },
+      {
+        "name": "Sleep Hours",
+        "description": "Total sleep including naps",
+        "value": 10.5,
+        "unit": "hours"
+      },
+      {
+        "name": "Water Intake",
+        "description": "Daily water consumption",
+        "value": 3.8,
+        "unit": "liters"
+      }
+    ]
+  },
+  {
+    "date": "23-01-2024",
+    "diary": {
+      "content": "Much better today! Feeling refreshed and back to normal. Had a great workout session at the gym - felt strong and energized. Work was productive, finally finished that feature I've been working on. Celebrated with the team over a quick lunch. In the evening, cooked a new recipe I found online - Thai curry. It turned out really well! My cooking skills are improving. Read more of that productivity book before bed. Good day overall!"
+    },
+    "mood_tracker": ["energetic", "accomplished", "happy", "satisfied"],
+    "expense_tracker": [
+      {
+        "name": "Groceries",
+        "description": "Ingredients for Thai curry",
+        "amount": 850.00
+      },
+      {
+        "name": "Team lunch",
+        "description": "Celebration lunch",
+        "amount": 450.00
+      }
+    ],
+    "health_stats": [
+      {
+        "name": "Steps",
+        "description": "Daily step count",
+        "value": 13200,
+        "unit": "steps"
+      },
+      {
+        "name": "Gym workout",
+        "description": "Workout duration",
+        "value": 60,
+        "unit": "minutes"
+      },
+      {
+        "name": "Water Intake",
+        "description": "Daily water consumption",
+        "value": 3.2,
+        "unit": "liters"
+      }
+    ]
+  },
+  {
+    "date": "24-01-2024",
+    "diary": {
+      "content": "Had an unexpected visit from a college friend who was in town for business. We haven't seen each other in over two years! Spent the evening catching up, sharing stories, and reminiscing about old times. It's amazing how some friendships can pick up right where they left off. We talked about our career paths, relationships, and life changes. Made me realize how much I value deep friendships. Sometimes the best days are the unplanned ones."
+    },
+    "mood_tracker": ["nostalgic", "happy", "grateful", "connected"],
+    "expense_tracker": [
+      {
+        "name": "Dinner with friend",
+        "description": "Restaurant dinner",
+        "amount": 1800.00
+      },
+      {
+        "name": "Drinks",
+        "description": "Evening drinks",
+        "amount": 950.00
+      }
+    ],
+    "health_stats": [
+      {
+        "name": "Steps",
+        "description": "Daily step count",
+        "value": 9800,
+        "unit": "steps"
+      },
+      {
+        "name": "Water Intake",
+        "description": "Daily water consumption",
+        "value": 2.6,
+        "unit": "liters"
+      },
+      {
+        "name": "Social interaction",
+        "description": "Time spent with friend",
+        "value": 5,
+        "unit": "hours"
+      }
+    ]
+  }
+]
+

@@ -6,12 +6,18 @@ from PIL import Image
 import os
 import datetime
 import json
-import os
 import google.generativeai as genai
+from pinecone import Pinecone
+from openai import OpenAI
 
 # Upload folder for diary images
 DIARY_IMAGES_FOLDER = "uploads/diary_images"
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+
+# Initialize Pinecone and OpenAI for RAG
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+pinecone_index = pc.Index("diarydad")
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def ensure_diary_images_folder():
     """Ensure diary images folder exists"""
@@ -79,7 +85,7 @@ def extract_text_from_image():
 
 @user_required
 def generate_summary():
-    """Generate summary of diary text using Gemini API - max 3 times per day, streaming response"""
+    """Generate summary of diary text using GPT API - max 3 times per day, streaming response. Saves summary to DB after completion."""
     user_id = str(g.current_user["_id"])
     
     # Get or create today's diary entry (1 document = 1 day)
@@ -100,41 +106,72 @@ def generate_summary():
     if not isinstance(diary_text, str):
         return jsonify({"error": "text must be a string."}), 400
     
-    # Get Gemini API key from environment
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_api_key:
-        return jsonify({"error": "Gemini API key not configured on server."}), 500
+    # Check OpenAI API key
+    if not os.getenv("OPENAI_API_KEY"):
+        return jsonify({"error": "OpenAI API key not configured on server."}), 500
     
-    try:        
-        # Configure Gemini
-        genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        
-        # Create prompt
-        prompt = f"Please provide a concise summary of the following diary entry in 2-3 sentences:\n\n{diary_text}"
+    try:
+        # Create prompt for GPT
+        system_message = "You are a helpful assistant that creates concise, thoughtful summaries of diary entries."
+        user_message = f"Please provide a concise summary of the following diary entry in 2-3 sentences:\n\n{diary_text}"
         
         # Increment usage count in today's diary entry
         increment_summary_generation_count(user_id, date)
         
-        # Stream response
+        # Stream response and collect full summary
         def generate():
+            full_summary = ""
             try:
-                response = model.generate_content(
-                    prompt,
-                    generation_config=genai.types.GenerationConfig(
-                        max_output_tokens=500,
-                        temperature=0.7
-                    ),
+                # Stream response from OpenAI
+                stream = openai_client.chat.completions.create(
+                    model="gpt-4o-mini",  # Using gpt-4o-mini for cost-effectiveness
+                    messages=[
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_message}
+                    ],
+                    max_tokens=500,
+                    temperature=0.7,
                     stream=True
                 )
                 
                 # Send initial metadata
                 yield f"data: {json.dumps({'type': 'start', 'remaining_uses': 3 - (current_count + 1)})}\n\n"
                 
-                # Stream chunks
-                for chunk in response:
-                    if chunk.text:
-                        yield f"data: {json.dumps({'type': 'chunk', 'text': chunk.text})}\n\n"
+                # Stream chunks and collect summary
+                for chunk in stream:
+                    if chunk.choices[0].delta.content is not None:
+                        text = chunk.choices[0].delta.content
+                        full_summary += text
+                        yield f"data: {json.dumps({'type': 'chunk', 'text': text})}\n\n"
+                
+                # Save summary to database after completion
+                try:
+                    from models.diary import upsert_diary
+                    from config.db import mongo
+                    from bson import ObjectId
+                    
+                    # Get existing diary entry
+                    existing_diary_entry = mongo.db.diaries.find_one({"user_id": ObjectId(user_id), "date": date})
+                    
+                    if existing_diary_entry:
+                        # Get existing diary object or create new one
+                        diary_obj = existing_diary_entry.get("diary", {})
+                        if not isinstance(diary_obj, dict):
+                            diary_obj = {}
+                        
+                        # Update summary
+                        diary_obj["summary"] = full_summary.strip()
+                        
+                        # Save to database
+                        upsert_diary(user_id, date, diary_obj=diary_obj)
+                    else:
+                        # Create new diary entry with summary
+                        upsert_diary(user_id, date, diary={"summary": full_summary.strip()})
+                    
+                except Exception as db_error:
+                    # Log error but don't fail the stream
+                    print(f"Warning: Failed to save summary to database: {str(db_error)}")
+                    yield f"data: {json.dumps({'type': 'warning', 'message': 'Summary generated but failed to save to database.'})}\n\n"
                 
                 # Send completion
                 yield f"data: {json.dumps({'type': 'complete'})}\n\n"
@@ -151,6 +188,117 @@ def generate_summary():
             }
         )
 
-    except ImportError:
-        return jsonify({"error": "Internal server error"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Summary generation failed: {str(e)}"}), 500
+
+@user_required
+def chat_with_diary():
+    """Chat with diary using RAG (Retrieval-Augmented Generation) - streaming response"""
+    user_id = str(g.current_user["_id"])
+    
+    data = request.get_json()
+    query = data.get("query")
+    
+    if not query:
+        return jsonify({"error": "query is required."}), 400
+    
+    if not isinstance(query, str):
+        return jsonify({"error": "query must be a string."}), 400
+    
+    # Check OpenAI API key
+    if not os.getenv("OPENAI_API_KEY"):
+        return jsonify({"error": "OpenAI API key not configured on server."}), 500
+    
+    try:
+        # Create embedding for the query
+        try:
+            query_embedding = openai_client.embeddings.create(
+                model="text-embedding-3-small",
+                input=query
+            ).data[0].embedding
+        except Exception as e:
+            return jsonify({"error": f"Failed to create query embedding: {str(e)}"}), 500
+        
+        # Search Pinecone for relevant diary entries (filter by user_id)
+        try:
+            search_results = pinecone_index.query(
+                vector=query_embedding,
+                top_k=3,
+                include_metadata=True,
+                filter={"user_id": user_id}
+            )
+        except Exception as e:
+            return jsonify({"error": f"Failed to search diary entries: {str(e)}"}), 500
+        
+        # Prepare context from retrieved diary entries
+        context_parts = []
+        if search_results.matches and len(search_results.matches) > 0:
+            for match in search_results.matches:
+                metadata = match.metadata
+                date = metadata.get("date", "Unknown date")
+                content = metadata.get("content", metadata.get("text", ""))
+                
+                if content:
+                    context_parts.append(f"Date: {date}\nEntry: {content}")
+        
+        # If no relevant entries found, still provide a response
+        if not context_parts:
+            context = "No relevant diary entries found in your diary."
+        else:
+            context = "\n\n---\n\n".join(context_parts)
+        
+        # Create RAG prompt for GPT
+        system_message = """You are a helpful assistant that helps users understand and reflect on their diary entries. 
+Based on the diary entries provided, answer the user's question in a thoughtful, empathetic, and concise manner.
+If the context doesn't contain relevant information to answer the question, politely let the user know.
+Be warm, understanding, and focus on helping the user gain insights from their diary entries."""
+        
+        user_message = f"""Relevant Diary Entries:
+{context}
+
+User Question: {query}
+
+Please provide a helpful response based on the diary entries above:"""
+        
+        # Stream response using OpenAI GPT
+        def generate():
+            try:
+                # Stream response from OpenAI
+                stream = openai_client.chat.completions.create(
+                    model="gpt-4o-mini",  # Using gpt-4o-mini for cost-effectiveness, can change to gpt-4o for better quality
+                    messages=[
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_message}
+                    ],
+                    max_tokens=1000,
+                    temperature=0.7,
+                    stream=True
+                )
+                
+                # Send initial metadata
+                yield f"data: {json.dumps({'type': 'start', 'matches_found': len(search_results.matches) if search_results.matches else 0})}\n\n"
+                
+                # Stream chunks
+                for chunk in stream:
+                    if chunk.choices[0].delta.content is not None:
+                        text = chunk.choices[0].delta.content
+                        yield f"data: {json.dumps({'type': 'chunk', 'text': text})}\n\n"
+                
+                # Send completion
+                yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+                
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+        
+        return Response(
+            stream_with_context(generate()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no'
+            }
+        )
+        
+    except Exception as e:
+        return jsonify({"error": f"Chat failed: {str(e)}"}), 500
 

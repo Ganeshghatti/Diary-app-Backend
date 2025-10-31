@@ -9,3 +9,6 @@ pytz
 pillow
 pytesseract
 google-generativeai
+openai
+pinecone-client
+pinecone
