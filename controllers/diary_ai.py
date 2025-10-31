@@ -19,6 +19,41 @@ pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 pinecone_index = pc.Index("diarydad")
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Configure Tesseract path
+def configure_tesseract():
+    """Try to configure Tesseract path automatically"""
+    import shutil
+    
+    # Common tesseract locations
+    common_paths = [
+        '/usr/bin/tesseract',
+        '/usr/local/bin/tesseract',
+        '/opt/homebrew/bin/tesseract',  # macOS
+        os.getenv('TESSERACT_CMD'),  # Environment variable
+    ]
+    
+    # Check if tesseract is in PATH
+    tesseract_path = shutil.which('tesseract')
+    
+    # If found in PATH, use it
+    if tesseract_path:
+        pytesseract.pytesseract.tesseract_cmd = tesseract_path
+        return True
+    
+    # Try common paths
+    for path in common_paths:
+        if path and os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            return True
+    
+    return False
+
+# Auto-configure tesseract on module load
+_tesseract_configured = configure_tesseract()
+if not _tesseract_configured:
+    print("Warning: Tesseract OCR not found. Text extraction from images will not work.")
+    print("Install with: sudo apt install tesseract-ocr (Ubuntu/Debian)")
+
 def ensure_diary_images_folder():
     """Ensure diary images folder exists"""
     if not os.path.exists(DIARY_IMAGES_FOLDER):
@@ -69,8 +104,25 @@ def extract_text_from_image():
         # Save original image
         image.save(filepath)
         
+        # Check if tesseract is configured
+        if not _tesseract_configured:
+            # Try to configure again (in case it was installed after server start)
+            if not configure_tesseract():
+                return jsonify({
+                    "error": "Tesseract OCR is not installed or not found in PATH. Please install it: sudo apt install tesseract-ocr (Ubuntu/Debian)"
+                }), 500
+        
         # Use pytesseract to extract text
-        text = pytesseract.image_to_string(image)
+        try:
+            text = pytesseract.image_to_string(image)
+        except pytesseract.pytesseract.TesseractNotFoundError:
+            return jsonify({
+                "error": "Tesseract OCR is not installed or not found in PATH. Please install it: sudo apt install tesseract-ocr (Ubuntu/Debian)"
+            }), 500
+        except Exception as ocr_error:
+            return jsonify({
+                "error": f"OCR processing failed: {str(ocr_error)}"
+            }), 500
         
         # Increment usage count in today's diary entry
         increment_image_extraction_count(user_id, date)
