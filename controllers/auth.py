@@ -35,6 +35,7 @@ def verify_otp():
         return jsonify({"error": "Phone number must be 10 digits."}), 400
     if not otp or not otp.isdigit() or len(otp) != 6:
         return jsonify({"error": "OTP must be a 6-digit number."}), 400
+    
     try:
         record = get_otp(phone)
         print(record)
@@ -48,14 +49,33 @@ def verify_otp():
         user = find_user(phone)
     except Exception as e:
         return jsonify({"error": f"Error accessing user data: {str(e)}"}), 500
+    
     newly_created = False
     if not user:
+        # Only set timezone when creating NEW user (signup)
+        # Get timezone from header (try both uppercase and title case for compatibility)
+        timezone = request.headers.get("X-Timezone") or request.headers.get("x-timezone") or "UTC"
+        
+        # Log received timezone for debugging
+        print(f"Received timezone header for new user: {timezone}")
+        
+        # Validate timezone
+        if timezone != "UTC":
+            try:
+                import pytz
+                pytz.timezone(timezone)
+                print(f"Timezone validated: {timezone}")
+            except pytz.exceptions.UnknownTimeZoneError:
+                print(f"Invalid timezone '{timezone}', falling back to UTC")
+                timezone = "UTC"  # Fallback to UTC if invalid
+        
         try:
-            create_user(phone)
+            create_user(phone, timezone)
             newly_created = True
             user = find_user(phone)
         except Exception as e:
             return jsonify({"error": f"Error creating user: {str(e)}"}), 500
+    # For existing users (login), don't update timezone - use existing timezone from profile
     try:
         delete_otp(phone)
     except Exception as e:
@@ -64,8 +84,7 @@ def verify_otp():
     if not jwt_secret:
         return jsonify({"error": "JWT secret not configured on server."}), 500
     payload = {
-        "phone": phone,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+        "phone": phone
     }
     try:
         token = jwt.encode(payload, jwt_secret, algorithm="HS256")

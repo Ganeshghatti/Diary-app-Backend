@@ -11,3 +11,5 @@ instance/
 .idea/
 .vscode/
 *.egg-info/
+uploads/profile_pics/*
+!uploads/profile_pics/.gitkeep

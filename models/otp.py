@@ -6,7 +6,7 @@ def save_otp(phone, otp):
         {"phone": phone},
         {"$set": {
             "otp": otp,
-            "created_at": datetime.datetime.utcnow()
+            "created_at": datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         }},
         upsert=True
     )
