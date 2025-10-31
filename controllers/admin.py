@@ -1,0 +1,314 @@
+from flask import request, jsonify, g
+from middleware.admin_required import admin_required
+from models.user import find_user
+from models.diary import get_all_diaries
+from config.db import mongo
+import jwt
+import os
+import datetime
+import pytz
+
+# Hardcoded admin credentials
+ADMIN_EMAIL = "tech@diarydad.me"
+ADMIN_PASSWORD = "adminpass1"
+
+def admin_login():
+    """Admin login - hardcoded credentials"""
+    data = request.get_json()
+    
+    email = data.get("email")
+    password = data.get("password")
+    
+    if not email or not password:
+        return jsonify({"error": "Email and password are required."}), 400
+    
+    # Check hardcoded credentials
+    if email != ADMIN_EMAIL or password != ADMIN_PASSWORD:
+        return jsonify({"error": "Invalid credentials."}), 401
+    
+    # Generate JWT token
+    secret_key = os.getenv("JWT_SECRET")
+    token = jwt.encode({
+        "email": ADMIN_EMAIL,
+        "role": "admin"
+    }, secret_key, algorithm="HS256")
+    
+    return jsonify({
+        "message": "Admin login successful",
+        "token": token,
+        "email": ADMIN_EMAIL
+    }), 200
+
+@admin_required
+def get_all_users():
+    """Get all users with basic info"""
+    try:
+        users = list(mongo.db.users.find({}, {
+            "_id": 1,
+            "phone": 1,
+            "name": 1,
+            "email": 1,
+            "timezone": 1,
+            "created_at": 1
+        }).sort("created_at", -1))
+        
+        # Convert ObjectId to string and format dates
+        for user in users:
+            user["_id"] = str(user["_id"])
+            if "created_at" in user and user["created_at"]:
+                if isinstance(user["created_at"], datetime.datetime):
+                    user["created_at"] = user["created_at"].isoformat()
+        
+        return jsonify({
+            "users": users,
+            "total": len(users)
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@admin_required
+def get_user_details(user_id):
+    """Get detailed information about a specific user"""
+    try:
+        from bson import ObjectId
+        
+        # Get user
+        user = mongo.db.users.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            return jsonify({"error": "User not found."}), 404
+        
+        # Convert ObjectId to string
+        user["_id"] = str(user["_id"])
+        
+        # Format dates
+        if "created_at" in user and user["created_at"]:
+            if isinstance(user["created_at"], datetime.datetime):
+                user["created_at"] = user["created_at"].isoformat()
+        
+        # Get user's diary entries count
+        diaries = get_all_diaries(user_id)
+        user["total_diary_entries"] = len(diaries)
+        
+        # Get last diary entry date
+        if diaries:
+            last_entry = diaries[0]  # Already sorted by created_at descending
+            if "created_at" in last_entry and last_entry["created_at"]:
+                if isinstance(last_entry["created_at"], datetime.datetime):
+                    user["last_diary_entry"] = last_entry["created_at"].isoformat()
+        else:
+            user["last_diary_entry"] = None
+        
+        # Get usage stats from today's diary if exists
+        now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        today_date = now_utc.strftime("%d-%m-%Y")
+        today_diary = mongo.db.diaries.find_one({
+            "user_id": ObjectId(user_id),
+            "date": today_date
+        })
+        
+        if today_diary:
+            user["today_image_extractions"] = today_diary.get("image_extraction_count", 0)
+            user["today_summary_generations"] = today_diary.get("summary_generation_count", 0)
+        else:
+            user["today_image_extractions"] = 0
+            user["today_summary_generations"] = 0
+        
+        return jsonify({"user": user}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@admin_required
+def get_engagement_stats():
+    """Get engagement rate statistics for graphs"""
+    try:
+        now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        
+        # Today
+        today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = now_utc
+        
+        # This week (Monday to today)
+        days_since_monday = now_utc.weekday()
+        week_start = (now_utc - datetime.timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+        week_end = now_utc
+        
+        # This month (first day to today)
+        month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_end = now_utc
+        
+        # Last 7 days (rolling)
+        last_7_days_start = (now_utc - datetime.timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Last 30 days (rolling)
+        last_30_days_start = (now_utc - datetime.timedelta(days=29)).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Last 90 days (rolling)
+        last_90_days_start = (now_utc - datetime.timedelta(days=89)).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Get total users
+        total_users = mongo.db.users.count_documents({})
+        
+        # Today - users who created/updated diary today
+        today_active_users = mongo.db.diaries.distinct("user_id", {
+            "$or": [
+                {"created_at": {"$gte": today_start, "$lte": today_end}},
+                {"last_update": {"$gte": today_start, "$lte": today_end}}
+            ]
+        })
+        today_count = len(today_active_users)
+        
+        # This week
+        week_active_users = mongo.db.diaries.distinct("user_id", {
+            "$or": [
+                {"created_at": {"$gte": week_start, "$lte": week_end}},
+                {"last_update": {"$gte": week_start, "$lte": week_end}}
+            ]
+        })
+        week_count = len(week_active_users)
+        
+        # This month
+        month_active_users = mongo.db.diaries.distinct("user_id", {
+            "$or": [
+                {"created_at": {"$gte": month_start, "$lte": month_end}},
+                {"last_update": {"$gte": month_start, "$lte": month_end}}
+            ]
+        })
+        month_count = len(month_active_users)
+        
+        # Last 7 days (rolling)
+        last_7_days_users = mongo.db.diaries.distinct("user_id", {
+            "$or": [
+                {"created_at": {"$gte": last_7_days_start, "$lte": now_utc}},
+                {"last_update": {"$gte": last_7_days_start, "$lte": now_utc}}
+            ]
+        })
+        last_7_days_count = len(last_7_days_users)
+        
+        # Last 30 days (rolling)
+        last_30_days_users = mongo.db.diaries.distinct("user_id", {
+            "$or": [
+                {"created_at": {"$gte": last_30_days_start, "$lte": now_utc}},
+                {"last_update": {"$gte": last_30_days_start, "$lte": now_utc}}
+            ]
+        })
+        last_30_days_count = len(last_30_days_users)
+        
+        # Last 90 days (rolling)
+        last_90_days_users = mongo.db.diaries.distinct("user_id", {
+            "$or": [
+                {"created_at": {"$gte": last_90_days_start, "$lte": now_utc}},
+                {"last_update": {"$gte": last_90_days_start, "$lte": now_utc}}
+            ]
+        })
+        last_90_days_count = len(last_90_days_users)
+        
+        # Daily breakdown for last 30 days (for graph)
+        daily_engagement = []
+        for i in range(29, -1, -1):  # Last 30 days
+            day_start = (now_utc - datetime.timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start + datetime.timedelta(days=1) - datetime.timedelta(microseconds=1)
+            
+            day_users = mongo.db.diaries.distinct("user_id", {
+                "$or": [
+                    {"created_at": {"$gte": day_start, "$lte": day_end}},
+                    {"last_update": {"$gte": day_start, "$lte": day_end}}
+                ]
+            })
+            
+            daily_engagement.append({
+                "date": day_start.strftime("%Y-%m-%d"),
+                "active_users": len(day_users),
+                "total_users": total_users,
+                "engagement_rate": round((len(day_users) / total_users * 100) if total_users > 0 else 0, 2)
+            })
+        
+        # Weekly breakdown for last 12 weeks (for graph)
+        weekly_engagement = []
+        for i in range(11, -1, -1):  # Last 12 weeks
+            week_end_date = now_utc - datetime.timedelta(weeks=i, days=now_utc.weekday())
+            week_start_date = week_end_date - datetime.timedelta(days=6)
+            week_start_date = week_start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            week_end_date = week_end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            
+            week_users = mongo.db.diaries.distinct("user_id", {
+                "$or": [
+                    {"created_at": {"$gte": week_start_date, "$lte": week_end_date}},
+                    {"last_update": {"$gte": week_start_date, "$lte": week_end_date}}
+                ]
+            })
+            
+            weekly_engagement.append({
+                "week_start": week_start_date.strftime("%Y-%m-%d"),
+                "week_end": week_end_date.strftime("%Y-%m-%d"),
+                "active_users": len(week_users),
+                "total_users": total_users,
+                "engagement_rate": round((len(week_users) / total_users * 100) if total_users > 0 else 0, 2)
+            })
+        
+        # Monthly breakdown for last 12 months (for graph)
+        monthly_engagement = []
+        for i in range(11, -1, -1):  # Last 12 months
+            # Calculate month start and end
+            month_date = now_utc - datetime.timedelta(days=30 * i)
+            month_start_date = month_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            
+            # Calculate next month start to get current month end
+            if month_start_date.month == 12:
+                next_month_start = month_start_date.replace(year=month_start_date.year + 1, month=1, day=1)
+            else:
+                next_month_start = month_start_date.replace(month=month_start_date.month + 1, day=1)
+            
+            month_end_date = next_month_start - datetime.timedelta(microseconds=1)
+            
+            month_users = mongo.db.diaries.distinct("user_id", {
+                "$or": [
+                    {"created_at": {"$gte": month_start_date, "$lte": month_end_date}},
+                    {"last_update": {"$gte": month_start_date, "$lte": month_end_date}}
+                ]
+            })
+            
+            monthly_engagement.append({
+                "month": month_start_date.strftime("%Y-%m"),
+                "month_name": month_start_date.strftime("%B %Y"),
+                "active_users": len(month_users),
+                "total_users": total_users,
+                "engagement_rate": round((len(month_users) / total_users * 100) if total_users > 0 else 0, 2)
+            })
+        
+        return jsonify({
+            "summary": {
+                "total_users": total_users,
+                "today": {
+                    "active_users": today_count,
+                    "engagement_rate": round((today_count / total_users * 100) if total_users > 0 else 0, 2)
+                },
+                "this_week": {
+                    "active_users": week_count,
+                    "engagement_rate": round((week_count / total_users * 100) if total_users > 0 else 0, 2)
+                },
+                "this_month": {
+                    "active_users": month_count,
+                    "engagement_rate": round((month_count / total_users * 100) if total_users > 0 else 0, 2)
+                },
+                "last_7_days": {
+                    "active_users": last_7_days_count,
+                    "engagement_rate": round((last_7_days_count / total_users * 100) if total_users > 0 else 0, 2)
+                },
+                "last_30_days": {
+                    "active_users": last_30_days_count,
+                    "engagement_rate": round((last_30_days_count / total_users * 100) if total_users > 0 else 0, 2)
+                },
+                "last_90_days": {
+                    "active_users": last_90_days_count,
+                    "engagement_rate": round((last_90_days_count / total_users * 100) if total_users > 0 else 0, 2)
+                }
+            },
+            "graphs": {
+                "daily": daily_engagement,
+                "weekly": weekly_engagement,
+                "monthly": monthly_engagement
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+

@@ -421,6 +421,171 @@ Authorization: Bearer YOUR_TOKEN_HERE
 
 ---
 
+## 🔐 Admin Routes
+
+### Admin Login
+**Method:** `POST`  
+**URL:** `http://localhost:4000/admin/login`  
+**Headers:**
+```
+Content-Type: application/json
+```
+**Body (JSON):**
+```json
+{
+  "email": "admin@diarydad.me",
+  "password": "adminpass1"
+}
+```
+**Expected Response:**
+```json
+{
+  "message": "Admin login successful",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "email": "admin@diarydad.me"
+}
+```
+**💡 Save the `token` from response for admin requests!**
+
+---
+
+### Get All Users
+**Method:** `GET`  
+**URL:** `http://localhost:4000/admin/users`  
+**Headers:**
+```
+Authorization: Bearer ADMIN_TOKEN_HERE
+```
+**Expected Response:**
+```json
+{
+  "users": [
+    {
+      "_id": "65a1b2c3d4e5f6g7h8i9j0k1",
+      "phone": "9876543210",
+      "name": "John Doe",
+      "email": "john@example.com",
+      "timezone": "Asia/Kolkata",
+      "created_at": "2024-01-15T10:30:00"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+### Get User Details
+**Method:** `GET`  
+**URL:** `http://localhost:4000/admin/users/{user_id}`  
+**Headers:**
+```
+Authorization: Bearer ADMIN_TOKEN_HERE
+```
+**Example:** `http://localhost:4000/admin/users/65a1b2c3d4e5f6g7h8i9j0k1`
+
+**Expected Response:**
+```json
+{
+  "user": {
+    "_id": "65a1b2c3d4e5f6g7h8i9j0k1",
+    "phone": "9876543210",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "timezone": "Asia/Kolkata",
+    "profile_pic_url": "/uploads/profile_pics/65a1b2c3d4e5f6g7h8i9j0k1.jpg",
+    "created_at": "2024-01-15T10:30:00",
+    "total_diary_entries": 15,
+    "last_diary_entry": "2024-01-20T18:45:00",
+    "today_image_extractions": 1,
+    "today_summary_generations": 2
+  }
+}
+```
+
+---
+
+### Get Engagement Statistics
+**Method:** `GET`  
+**URL:** `http://localhost:4000/admin/engagement`  
+**Headers:**
+```
+Authorization: Bearer ADMIN_TOKEN_HERE
+```
+**Expected Response:**
+```json
+{
+  "summary": {
+    "total_users": 100,
+    "today": {
+      "active_users": 25,
+      "engagement_rate": 25.0
+    },
+    "this_week": {
+      "active_users": 60,
+      "engagement_rate": 60.0
+    },
+    "this_month": {
+      "active_users": 80,
+      "engagement_rate": 80.0
+    },
+    "last_7_days": {
+      "active_users": 65,
+      "engagement_rate": 65.0
+    },
+    "last_30_days": {
+      "active_users": 85,
+      "engagement_rate": 85.0
+    },
+    "last_90_days": {
+      "active_users": 95,
+      "engagement_rate": 95.0
+    }
+  },
+  "graphs": {
+    "daily": [
+      {
+        "date": "2024-01-01",
+        "active_users": 20,
+        "total_users": 100,
+        "engagement_rate": 20.0
+      },
+      {
+        "date": "2024-01-02",
+        "active_users": 25,
+        "total_users": 100,
+        "engagement_rate": 25.0
+      }
+    ],
+    "weekly": [
+      {
+        "week_start": "2024-01-01",
+        "week_end": "2024-01-07",
+        "active_users": 60,
+        "total_users": 100,
+        "engagement_rate": 60.0
+      }
+    ],
+    "monthly": [
+      {
+        "month": "2024-01",
+        "month_name": "January 2024",
+        "active_users": 80,
+        "total_users": 100,
+        "engagement_rate": 80.0
+      }
+    ]
+  }
+}
+```
+
+**Graph Data Usage:**
+- **daily**: Last 30 days - use for line/bar chart showing daily engagement
+- **weekly**: Last 12 weeks - use for weekly trend analysis
+- **monthly**: Last 12 months - use for long-term trend analysis
+
+---
+
 ## 📋 Testing Sequence
 
 1. **Request OTP** → Get OTP (check SMS or console logs)
@@ -460,6 +625,118 @@ http://localhost:4000/uploads/profile_pics/{user_id}.jpg
 
 ---
 
+## 🤖 AI Features (3 uses per day limit)
+
+### 11. Extract Text from Image
+**Method:** `POST`  
+**URL:** `http://localhost:4000/diary/extract-text`  
+**Headers:**
+```
+Authorization: Bearer YOUR_TOKEN_HERE
+```
+**Body (form-data):**
+- Key: `image` | Type: File | Value: `[Select Image File]`
+
+**Expected Response:**
+```json
+{
+  "text": "Today I went for a walk in the park. The weather was beautiful...",
+  "image_url": "/uploads/diary_images/65a1b2c3d4e5f6g7h8i9j0k1_20240115_143025.jpg",
+  "remaining_uses": 2
+}
+```
+
+**Note:** 
+- Saves image to server with filename: `{user_id}_{timestamp}.{extension}`
+- Max 3 extractions per day (per diary entry/day)
+- Returns extracted text and image URL
+
+---
+
+### 12. Generate Summary (Streaming)
+**Method:** `POST`  
+**URL:** `http://localhost:4000/diary/generate-summary`  
+**Headers:**
+```
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+```
+**Body (JSON):**
+```json
+{
+  "text": "Today was a wonderful day. I woke up early and went for a morning jog. After that, I had breakfast with my family and we spent time together. In the afternoon, I worked on my project and made great progress. In the evening, I met some friends for dinner and we had a great conversation about life and our goals."
+}
+```
+
+**Expected Response (Server-Sent Events - SSE):**
+```
+data: {"type": "start", "remaining_uses": 2}
+
+data: {"type": "chunk", "text": "Today"}
+
+data: {"type": "chunk", "text": " was"}
+
+data: {"type": "chunk", "text": " a"}
+
+data: {"type": "chunk", "text": " productive"}
+
+data: {"type": "chunk", "text": " day"}
+
+...
+
+data: {"type": "complete"}
+```
+
+**Frontend Usage (JavaScript):**
+```javascript
+const eventSource = new EventSource('/diary/generate-summary', {
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  }
+});
+
+// Note: EventSource doesn't support POST with body, use fetch instead:
+fetch('/diary/generate-summary', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  },
+  body: JSON.stringify({ text: diaryText })
+}).then(response => {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  
+  function readStream() {
+    reader.read().then(({ done, value }) => {
+      if (done) return;
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n\n');
+      lines.forEach(line => {
+        if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.substring(6));
+          if (data.type === 'chunk') {
+            console.log('Text chunk:', data.text);
+          } else if (data.type === 'complete') {
+            console.log('Stream complete');
+          }
+        }
+      });
+      readStream();
+    });
+  }
+  readStream();
+});
+```
+
+**Note:**
+- Max 3 summaries per day (per diary entry/day)
+- Streams response in real-time using Server-Sent Events (SSE)
+- Requires `GEMINI_API_KEY` environment variable
+
+---
+
 ## ⚠️ Common Errors
 
 **401 Unauthorized:**
@@ -486,6 +763,20 @@ Solution: Use correct date format: `15-01-2024`
 ```
 Solution: Create diary entry first or check date format
 
+**429 Too Many Requests:**
+```json
+{
+  "error": "Daily limit reached. You can extract text from images only 3 times per day."
+}
+```
+or
+```json
+{
+  "error": "Daily limit reached. You can generate summaries only 3 times per day."
+}
+```
+Solution: Wait until next day or use remaining daily quota
+
 ---
 
 ## 📝 Notes
@@ -493,7 +784,10 @@ Solution: Create diary entry first or check date format
 - **Date Format:** Always use `DD-MM-YYYY` format (e.g., `15-01-2024`)
 - **Timezone:** User timezone affects date queries - date is converted to UTC range for database queries
 - **Token:** No expiration - tokens are valid indefinitely
-- **Profile Pic:** Stored as `{user_id}.jpg` in `uploads/profile_pics/`
+- **Profile Pic:** Stored as `{user_id}.jpg` in `uploads/profile_pics/`, returned as base64 data URI
 - **Mood Tracker:** Maximum 5 items allowed
 - **Diary Date:** Frontend doesn't send date - backend always uses current UTC date
+- **Usage Tracking:** Image extraction and summary generation usage tracked per day in diary model (3 uses/day each)
+- **Diary Images:** Saved as `{user_id}_{timestamp}.{extension}` in `uploads/diary_images/`
+- **Gemini API:** Requires `GEMINI_API_KEY` environment variable for summary generation
 

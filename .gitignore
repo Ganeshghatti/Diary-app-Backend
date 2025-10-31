@@ -13,3 +13,5 @@ instance/
 *.egg-info/
 uploads/profile_pics/*
 !uploads/profile_pics/.gitkeep
+uploads/diary_images/*
+!uploads/diary_images/.gitkeep

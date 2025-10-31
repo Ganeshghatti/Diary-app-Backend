@@ -6,6 +6,7 @@ from config.db import init_db
 from routes.auth import auth_routes
 from routes.diary import diary_routes
 from routes.user import user_routes
+from routes.admin import admin_routes
 import os
 
 app = Flask(__name__)
@@ -17,6 +18,12 @@ def serve_profile_pic(filename):
     """Serve profile picture files"""
     return send_from_directory("uploads/profile_pics", filename)
 
+# Serve diary images
+@app.route("/uploads/diary_images/<filename>")
+def serve_diary_image(filename):
+    """Serve diary image files"""
+    return send_from_directory("uploads/diary_images", filename)
+
 # Global rate limit (e.g., 2000 requests per hour per IP)
 limiter = Limiter(app=app, key_func=get_remote_address, default_limits=["2000 per hour"])
 
@@ -27,6 +34,7 @@ init_db(app)
 app.register_blueprint(auth_routes)
 app.register_blueprint(diary_routes)
 app.register_blueprint(user_routes)
+app.register_blueprint(admin_routes)
 
 @app.route("/")
 def index():

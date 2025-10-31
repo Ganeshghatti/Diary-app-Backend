@@ -41,7 +41,9 @@ def upsert_diary(user_id, date, diary=None, mood_tracker=None, expense_tracker=N
             "date": date,  # UTC date string (DD-MM-YYYY)
             "created_at": now_utc,  # UTC timestamp
             "last_update": now_utc,  # UTC timestamp
-            "update_log": [{"timestamp": now_utc}]  # UTC timestamps
+            "update_log": [{"timestamp": now_utc}],  # UTC timestamps
+            "image_extraction_count": 0,  # Usage tracking for this day
+            "summary_generation_count": 0  # Usage tracking for this day
         }
         
         if diary is not None:
@@ -55,6 +57,52 @@ def upsert_diary(user_id, date, diary=None, mood_tracker=None, expense_tracker=N
         
         result = mongo.db.diaries.insert_one(diary_data)
         return {"upserted": True, "result": result}
+
+def get_or_create_today_diary(user_id):
+    """Get today's diary entry or create it if it doesn't exist"""
+    now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    date = now_utc.strftime("%d-%m-%Y")
+    
+    diary = mongo.db.diaries.find_one({"user_id": ObjectId(user_id), "date": date})
+    
+    if not diary:
+        # Create diary entry for today with usage tracking initialized
+        diary_data = {
+            "user_id": ObjectId(user_id),
+            "date": date,
+            "created_at": now_utc,
+            "last_update": now_utc,
+            "update_log": [{"timestamp": now_utc}],
+            "image_extraction_count": 0,
+            "summary_generation_count": 0
+        }
+        mongo.db.diaries.insert_one(diary_data)
+        diary = mongo.db.diaries.find_one({"user_id": ObjectId(user_id), "date": date})
+    
+    # Ensure usage fields exist (for old entries)
+    if "image_extraction_count" not in diary:
+        mongo.db.diaries.update_one(
+            {"user_id": ObjectId(user_id), "date": date},
+            {"$set": {"image_extraction_count": 0, "summary_generation_count": 0}}
+        )
+        diary["image_extraction_count"] = 0
+        diary["summary_generation_count"] = 0
+    
+    return diary
+
+def increment_image_extraction_count(user_id, date):
+    """Increment image extraction count for today's diary"""
+    mongo.db.diaries.update_one(
+        {"user_id": ObjectId(user_id), "date": date},
+        {"$inc": {"image_extraction_count": 1}}
+    )
+
+def increment_summary_generation_count(user_id, date):
+    """Increment summary generation count for today's diary"""
+    mongo.db.diaries.update_one(
+        {"user_id": ObjectId(user_id), "date": date},
+        {"$inc": {"summary_generation_count": 1}}
+    )
 
 def get_diary_by_date_range(user_id, start_utc, end_utc):
     """Get diary entry by UTC date range (query using created_at)"""
