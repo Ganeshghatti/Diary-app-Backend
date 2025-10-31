@@ -7,6 +7,8 @@ import jwt
 import os
 import datetime
 import pytz
+import base64
+from bson import ObjectId
 
 # Hardcoded admin credentials
 ADMIN_EMAIL = "tech@diarydad.me"
@@ -66,12 +68,65 @@ def get_all_users():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def add_profile_pic_base64(user_data):
+    """Add profile picture as base64 to user_data if profile_pic_url exists"""
+    profile_pic_url = user_data.get("profile_pic_url")
+    if profile_pic_url:
+        try:
+            # Extract filename from URL
+            filename = profile_pic_url.split("/")[-1]
+            filepath = os.path.join("uploads/profile_pics", filename)
+            
+            if os.path.exists(filepath):
+                # Read image file and convert to base64
+                with open(filepath, "rb") as image_file:
+                    image_data = base64.b64encode(image_file.read()).decode('utf-8')
+                    # Detect image type from file extension
+                    ext = filename.rsplit(".", 1)[-1].lower()
+                    mime_type = f"image/{ext}" if ext in ["png", "gif", "webp"] else "image/jpeg"
+                    # Add data URI prefix
+                    user_data["profile_pic"] = f"data:{mime_type};base64,{image_data}"
+        except Exception as e:
+            # If error reading image, just skip it
+            print(f"Warning: Could not load profile picture: {str(e)}")
+    return user_data
+
+def format_diary_for_response(diary, user_id, include_full_data=True):
+    """Format diary entry for API response"""
+    formatted = {
+        "_id": str(diary.get("_id", "")),
+        "date": diary.get("date", ""),
+        "created_at": diary.get("created_at").isoformat() if isinstance(diary.get("created_at"), datetime.datetime) else diary.get("created_at"),
+        "last_update": diary.get("last_update").isoformat() if isinstance(diary.get("last_update"), datetime.datetime) else diary.get("last_update"),
+        "image_extraction_count": diary.get("image_extraction_count", 0),
+        "summary_generation_count": diary.get("summary_generation_count", 0)
+    }
+    
+    if include_full_data:
+        # Include full diary content for recent entries
+        if "diary" in diary:
+            formatted["diary"] = diary["diary"]
+        if "mood_tracker" in diary:
+            formatted["mood_tracker"] = diary["mood_tracker"]
+        if "expense_tracker" in diary:
+            formatted["expense_tracker"] = diary["expense_tracker"]
+        if "health_stats" in diary:
+            formatted["health_stats"] = diary["health_stats"]
+        if "update_log" in diary:
+            formatted["update_log"] = [
+                {"timestamp": log_entry.get("timestamp").isoformat() if isinstance(log_entry.get("timestamp"), datetime.datetime) else log_entry.get("timestamp")}
+                for log_entry in diary["update_log"]
+            ]
+    else:
+        # Only include stats for older entries
+        formatted["type"] = "summary"
+    
+    return formatted
+
 @admin_required
 def get_user_details(user_id):
-    """Get detailed information about a specific user"""
+    """Get detailed information about a specific user with diary entries"""
     try:
-        from bson import ObjectId
-        
         # Get user
         user = mongo.db.users.find_one({"_id": ObjectId(user_id)})
         if not user:
@@ -85,7 +140,10 @@ def get_user_details(user_id):
             if isinstance(user["created_at"], datetime.datetime):
                 user["created_at"] = user["created_at"].isoformat()
         
-        # Get user's diary entries count
+        # Add profile picture as base64
+        user = add_profile_pic_base64(user)
+        
+        # Get all diary entries
         diaries = get_all_diaries(user_id)
         user["total_diary_entries"] = len(diaries)
         
@@ -112,6 +170,80 @@ def get_user_details(user_id):
         else:
             user["today_image_extractions"] = 0
             user["today_summary_generations"] = 0
+        
+        # Process diary entries: full data for past 3 calendar days, stats only for older
+        now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        # Calculate date threshold (today, yesterday, day before yesterday)
+        today_date = now_utc.date()
+        three_days_ago_date = today_date - datetime.timedelta(days=2)  # Include today, yesterday, and 2 days ago (3 total days)
+        
+        formatted_diaries = []
+        for diary in diaries:
+            diary_created_at = diary.get("created_at")
+            if isinstance(diary_created_at, datetime.datetime):
+                # Include full data if created within last 3 calendar days (today, yesterday, day before)
+                diary_date = diary_created_at.date()
+                include_full = diary_date >= three_days_ago_date
+                formatted_diary = format_diary_for_response(diary, user_id, include_full_data=include_full)
+                formatted_diaries.append(formatted_diary)
+            else:
+                # If no created_at, only send stats
+                formatted_diary = format_diary_for_response(diary, user_id, include_full_data=False)
+                formatted_diaries.append(formatted_diary)
+        
+        user["diaries"] = formatted_diaries
+        
+        # Calculate user-specific engagement stats
+        now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        
+        # Today
+        today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = now_utc
+        
+        # This week (Monday to today)
+        days_since_monday = now_utc.weekday()
+        week_start = (now_utc - datetime.timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+        week_end = now_utc
+        
+        # This month (first day to today)
+        month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_end = now_utc
+        
+        # Last 7 days (rolling)
+        last_7_days_start = (now_utc - datetime.timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Last 30 days (rolling)
+        last_30_days_start = (now_utc - datetime.timedelta(days=29)).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Last 90 days (rolling)
+        last_90_days_start = (now_utc - datetime.timedelta(days=89)).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Count active days (days with diary entries) for this user
+        def count_active_days(start_date, end_date):
+            """Count number of unique days with diary activity"""
+            active_diaries = list(mongo.db.diaries.find({
+                "user_id": ObjectId(user_id),
+                "$or": [
+                    {"created_at": {"$gte": start_date, "$lte": end_date}},
+                    {"last_update": {"$gte": start_date, "$lte": end_date}}
+                ]
+            }))
+            unique_dates = set()
+            for diary in active_diaries:
+                if "created_at" in diary and diary["created_at"]:
+                    unique_dates.add(diary["created_at"].date() if isinstance(diary["created_at"], datetime.datetime) else None)
+                if "last_update" in diary and diary["last_update"]:
+                    unique_dates.add(diary["last_update"].date() if isinstance(diary["last_update"], datetime.datetime) else None)
+            return len([d for d in unique_dates if d is not None])
+        
+        user["engagement_stats"] = {
+            "today": count_active_days(today_start, today_end),
+            "this_week": count_active_days(week_start, week_end),
+            "this_month": count_active_days(month_start, month_end),
+            "last_7_days": count_active_days(last_7_days_start, now_utc),
+            "last_30_days": count_active_days(last_30_days_start, now_utc),
+            "last_90_days": count_active_days(last_90_days_start, now_utc)
+        }
         
         return jsonify({"user": user}), 200
     except Exception as e:

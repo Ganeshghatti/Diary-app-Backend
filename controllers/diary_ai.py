@@ -108,7 +108,7 @@ def generate_summary():
     try:        
         # Configure Gemini
         genai.configure(api_key=gemini_api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Create prompt
         prompt = f"Please provide a concise summary of the following diary entry in 2-3 sentences:\n\n{diary_text}"
