@@ -7,7 +7,7 @@ from models.diary import (
     get_all_diaries
 )
 from middleware.user_required import user_required
-from utils.timezone import format_datetime_for_response, convert_user_date_to_utc_range, convert_user_month_to_utc_range, convert_user_date_to_utc_date_string
+from utils.timezone import format_datetime_for_response, convert_user_date_to_utc_range, convert_user_month_to_utc_range
 import datetime
 from pinecone import Pinecone
 from openai import OpenAI
@@ -123,12 +123,19 @@ def upsert_diary_entry():
         except ValueError:
             return jsonify({"error": "date must be in DD-MM-YYYY format."}), 400
         
-        # Convert user's date to UTC date string
-        date = convert_user_date_to_utc_date_string(date_input, user_timezone)
+        date = date_input
     else:
-        # Use current UTC date if not provided
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
-        date = now_utc.strftime("%d-%m-%Y")
+        # Use current date in user's timezone if not provided
+        try:
+            import pytz
+            user_tz = pytz.timezone(user_timezone)
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            now_user_tz = now_utc.astimezone(user_tz)
+            date = now_user_tz.strftime("%d-%m-%Y")
+        except:
+            # Fallback to UTC if timezone invalid
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            date = now_utc.strftime("%d-%m-%Y")
     
     # Extract diary object (containing content and summary)
     diary_obj = data.get("diary")
