@@ -1,5 +1,6 @@
 venv/
 .env
+diarydad-main.json
 __pycache__/
 instance/
 *.pyc
