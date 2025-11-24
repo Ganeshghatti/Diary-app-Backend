@@ -31,7 +31,7 @@ def get_vision_client():
             # Path to service account JSON file
             service_account_path = "diarydad-main.json"
             if not os.path.exists(service_account_path):
-                return None
+                return jsonify({"error": "Google Cloud Vision is not configured. Please ensure diarydad-main.json service account file exists."}), 500
             
             credentials = service_account.Credentials.from_service_account_file(
                 service_account_path,
