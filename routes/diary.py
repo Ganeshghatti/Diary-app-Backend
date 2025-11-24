@@ -6,7 +6,7 @@ from controllers.diary import (
     get_month_diaries_entries,
     get_all_diaries_entries
 )
-from controllers.diary_ai import extract_text_from_image, generate_summary, chat_with_diary
+from controllers.diary_ai import extract_text_from_image, extract_text_from_image_google_vision, generate_summary, chat_with_diary
 
 diary_routes = Blueprint("diary_routes", __name__)
 
@@ -20,7 +20,8 @@ diary_routes.route("/diary/month", methods=["GET"])(get_month_diaries_entries)
 diary_routes.route("/diary/all", methods=["GET"])(get_all_diaries_entries)
 
 # AI routes
-diary_routes.route("/diary/extract-text", methods=["POST"])(extract_text_from_image)
+diary_routes.route("/diary/extract-text/pytesseract", methods=["POST"])(extract_text_from_image)
+diary_routes.route("/diary/extract-text/google-vision", methods=["POST"])(extract_text_from_image_google_vision)
 diary_routes.route("/diary/generate-summary", methods=["POST"])(generate_summary)
 diary_routes.route("/diary/chat", methods=["POST"])(chat_with_diary)
 

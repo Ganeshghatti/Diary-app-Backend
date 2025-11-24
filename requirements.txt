@@ -12,3 +12,4 @@ google-generativeai
 openai
 pinecone-client
 pinecone
+google-cloud-vision

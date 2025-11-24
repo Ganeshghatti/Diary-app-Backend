@@ -1,11 +1,12 @@
 import datetime
 from config.db import mongo
 
-def save_otp(phone, otp):
+def save_otp(phone, otp, country_code="+91"):
     mongo.db.otps.update_one(
         {"phone": phone},
         {"$set": {
             "otp": otp,
+            "country_code": country_code,
             "created_at": datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         }},
         upsert=True

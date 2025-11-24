@@ -7,6 +7,8 @@ import os
 import datetime
 import json
 import google.generativeai as genai
+from google.cloud import vision
+from google.oauth2 import service_account
 from pinecone import Pinecone
 from openai import OpenAI
 
@@ -18,6 +20,28 @@ ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 pinecone_index = pc.Index("diarydad")
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Initialize Google Cloud Vision client
+_vision_client = None
+def get_vision_client():
+    """Initialize and return Google Cloud Vision client using service account JSON"""
+    global _vision_client
+    if _vision_client is None:
+        try:
+            # Path to service account JSON file
+            service_account_path = "diarydad-main.json"
+            if not os.path.exists(service_account_path):
+                return None
+            
+            credentials = service_account.Credentials.from_service_account_file(
+                service_account_path,
+                scopes=['https://www.googleapis.com/auth/cloud-vision']
+            )
+            _vision_client = vision.ImageAnnotatorClient(credentials=credentials)
+        except Exception as e:
+            print(f"Warning: Failed to initialize Google Cloud Vision client: {str(e)}")
+            return None
+    return _vision_client
 
 # Configure Tesseract path
 def configure_tesseract():
@@ -129,6 +153,91 @@ def extract_text_from_image():
         
         return jsonify({
             "text": text.strip(),
+            "image_url": f"/uploads/diary_images/{filename}",
+            "remaining_uses": 3 - (current_count + 1)
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Text extraction failed: {str(e)}"}), 500
+
+@user_required
+def extract_text_from_image_google_vision():
+    """Extract text from handwritten diary image using Google Cloud Vision - max 3 times per day"""
+    user_id = str(g.current_user["_id"])
+    
+    # Get or create today's diary entry (1 document = 1 day)
+    today_diary = get_or_create_today_diary(user_id)
+    current_count = today_diary.get("image_extraction_count", 0)
+    date = today_diary.get("date")
+    
+    # Check rate limit (3 per day)
+    if current_count >= 3:
+        return jsonify({"error": "Daily limit reached. You can extract text from images only 3 times per day."}), 429
+    
+    if 'image' not in request.files:
+        return jsonify({"error": "No image file provided."}), 400
+    
+    image_file = request.files['image']
+    
+    if not image_file.filename or not allowed_image_file(image_file.filename):
+        return jsonify({"error": "Invalid image file. Allowed: png, jpg, jpeg, gif, webp"}), 400
+    
+    try:
+        image = Image.open(image_file.stream)
+    except Exception as e:
+        return jsonify({"error": f"Invalid image file: {str(e)}"}), 400
+    
+    try:
+        # Ensure folder exists
+        ensure_diary_images_folder()
+        
+        # Save image with user_id and timestamp
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        timestamp = now_utc.strftime("%Y%m%d_%H%M%S")
+        extension = image_file.filename.rsplit(".", 1)[1].lower()
+        filename = f"{user_id}_{timestamp}.{extension}"
+        filepath = os.path.join(DIARY_IMAGES_FOLDER, filename)
+        
+        # Save original image
+        image.save(filepath)
+        
+        # Initialize Google Cloud Vision client
+        vision_client = get_vision_client()
+        if not vision_client:
+            return jsonify({
+                "error": "Google Cloud Vision is not configured. Please ensure diarydad-main.json service account file exists."
+            }), 500
+        
+        # Read image content for Vision API
+        with open(filepath, 'rb') as image_file_content:
+            content = image_file_content.read()
+        
+        # Create image object for Vision API
+        vision_image = vision.Image(content=content)
+        
+        # Perform document text detection (optimized for handwriting and dense text)
+        try:
+            response = vision_client.document_text_detection(image=vision_image)
+            
+            # DOCUMENT_TEXT_DETECTION returns full_text_annotation with structured data
+            # The full_text_annotation.text contains the complete extracted text
+            if response.full_text_annotation:
+                extracted_text = response.full_text_annotation.text
+            elif response.text_annotations:
+                # Fallback to text_annotations if full_text_annotation is not available
+                extracted_text = response.text_annotations[0].description
+            else:
+                extracted_text = ""
+            
+        except Exception as vision_error:
+            return jsonify({
+                "error": f"Google Vision API processing failed: {str(vision_error)}"
+            }), 500
+        
+        # Increment usage count in today's diary entry
+        increment_image_extraction_count(user_id, date)
+        
+        return jsonify({
+            "text": extracted_text.strip(),
             "image_url": f"/uploads/diary_images/{filename}",
             "remaining_uses": 3 - (current_count + 1)
         }), 200

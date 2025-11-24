@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "diarydad-main",
+  "private_key_id": "21dd57f81164f8539b5610163616a2cbe620b6f8",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDB5nZa3dgFaECR\nbNrCmQzXTe0GzAGI8vTrE/N2HyYp6J7U8mBDBaDW6Jh2rRgeOsl+T+yF0++9JhnT\nmiZc1hbFue4l9UwaMwpFLX9qeYgM4J3hsSO78Zpb+4uA2Pxe5JRW07xQmYMcMLjs\nJ104Uc7z3LHzty3uwEllzwRLL4oWwdbBJZrvxcFNr7bpYBQAPi/RTL40/JeV9uTA\nZauZGwu0kmdIXC5eTpUBdrIle1LMsFkrYYcng6hTKHPl/sZQujtNcXDbpuW1EpTx\nFuG/8/6jv5JiN9CfLR8UCpviD7nIkbv0wm45hO2G8KVbd3RXPW/Zm73z6Mq990sl\n3O4cR/bfAgMBAAECggEAA9BNmaHtYsXXJ0UV1GgAOafdtpmCmjf1Gz6MNlGMhZx+\nqz+NJyRQMonmncbvx4BugB6AT22ItJawQVox0PehAQiUJ4j4kzdXx16KuARl6aLt\nWAgM5OBuocqDxuf9prwmMsL9XDR4wLAwouxvR/FL+b3ofhunOp/rkaYNtpDbzXC/\nvoZRhzLnMOqAMVQ9quJDzMsTXHQe5oVItBem2HFQSY69PnLmWbQDsd8uLk55Hc42\nh5gyDAIUnUCS3Z8SH43payfAt6u7SNbAQuLrXB6AVdkfHUr8hIQNfzK+52NE2U/y\n0gkElQhDz+p7sF6M3oJAM7rFUnlcVuT8FJvg8der6QKBgQD6fQ2v0t08iHoJwHhL\nkm50lH36d8pfsOZm7MsJCxPL3EtlKLC9Gjwi5+1eYP3ahc2Nbeom37ap/HTFsrKS\nuiJ90GQNP1QlP9GbV4A8m8gTz9dJ6qOc4sTnPpV0n0YycTpAmzIJV08w9zErv8HJ\n2kUSOVHnqhutR8mrQGobfSeqFQKBgQDGKqjjdpdpM0wY1jNAwghlbeMwqtQ1Yli9\nGzq4x5d9PSmnhewHSlrbYdpY1aOEiPSahk8heza5wR22GxSkqwq8rkWegwLsCZqG\ne11l+ks01mYBrpJzyQEj7HKNHjW4ervAEeZ3JStwqLadyIvpbwtKXZAh6FmQmdzM\nQ/3vE8heIwKBgEm8XjcPv4h+NE6ClebJKDKxM5RzhuM8U9aghfQXirBMHPWeUMiZ\n3HH6C+noa1HUaXnkjTT8Te0kH8vCmsaOfHDE028C4WZFrxInY9xzjyYl3J4psBgS\nuRvJVH2MFUHsCtXR2ZzeUrV7TsIuJIGi+wouTWoArT0JENiUkaed4/sxAoGAdD9g\nNZdC+P6TnFpDVLC+VinhRZJgzDQ2FDEeAHltX5V6kwBX1msC44EComwo8T2aJ++0\nCdMK5mrn8ATw1ixULx0YUAVQuIBlupAx2Pm8FnHTAxeSaAO4/IbfJ/NZ1i+BZgna\nJXiThBIklmin0rdGa0h5nbp8l/v6b4VPOGlld/sCgYB+LkviUZX6pitsmX0fHeGE\n7xuTRm2TQR7zwFuSPVWb00Y8iup0wrDL52nt8KuLaGdzx+aPaxo/v2NgblJeBnVr\nKrTZ5pjfOJ+UvWF06GlGfMbH22DQmJSWe/1bWMEmTrOfJhcSGSlAayaOH/9aL85y\nJHmMYIZFzTTOHYSlKTlhwg==\n-----END PRIVATE KEY-----\n",
+  "client_email": "diary-ocr-service@diarydad-main.iam.gserviceaccount.com",
+  "client_id": "108206296243611074610",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/diary-ocr-service%40diarydad-main.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

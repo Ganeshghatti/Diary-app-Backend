@@ -15,14 +15,15 @@ limiter = Limiter(key_func=get_remote_address, app=None, default_limits=[])
 def request_otp():
     data = request.get_json()
     phone = data.get("phone")
+    country_code = data.get("country_code", "+91")
     if not phone or not phone.isdigit() or len(phone) != 10:
         return jsonify({"error": "Phone number must be 10 digits."}), 400
     otp = str(random.randint(100000, 999999))
     try:
-        save_otp(phone, otp)
+        save_otp(phone, otp, country_code)
     except Exception as e:
         return jsonify({"error": f"Failed to save OTP: {str(e)}"}), 500
-    if send_otp(phone, otp):
+    if send_otp(phone, otp, country_code):
         return jsonify({"message": "OTP sent successfully"}), 200
     else:
         return jsonify({"error": "Failed to send OTP. Please check the phone number and try again."}), 500
@@ -31,6 +32,7 @@ def verify_otp():
     data = request.get_json()
     phone = data.get("phone")
     otp = data.get("otp")
+    country_code = data.get("country_code", "+91")
     if not phone or not phone.isdigit() or len(phone) != 10:
         return jsonify({"error": "Phone number must be 10 digits."}), 400
     if not otp or not otp.isdigit() or len(otp) != 6:
@@ -70,7 +72,7 @@ def verify_otp():
                 timezone = "UTC"  # Fallback to UTC if invalid
         
         try:
-            create_user(phone, timezone)
+            create_user(phone, timezone, country_code)
             newly_created = True
             user = find_user(phone)
         except Exception as e:
