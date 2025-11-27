@@ -409,17 +409,13 @@ def chat_with_diary():
             context = "\n\n---\n\n".join(context_parts)
         
         # Create RAG prompt for GPT
-        system_message = """You are a helpful assistant that helps users understand and reflect on their diary entries. 
-Based on the diary entries provided, answer the user's question in a thoughtful, empathetic, and concise manner.
-If the context doesn't contain relevant information to answer the question, politely let the user know.
-Be warm, understanding, and focus on helping the user gain insights from their diary entries."""
+        system_message = """You are a helpful assistant that helps users understand and reflect on their diary entries in maximum 2-3 sentences. Based on the diary entries provided, answer the user's question in a thoughtful, empathetic, and concise manner.If the context doesn't contain relevant information to answer the question, politely let the user know. Be warm, understanding, and focus on helping the user gain insights from their diary entries."""
         
-        user_message = f"""Relevant Diary Entries:
-{context}
+        user_message = f"""Relevant Diary Entries: {context}
 
-User Question: {query}
+        User Question: {query}
 
-Please provide a helpful response based on the diary entries above:"""
+        Please provide a helpful response based on the diary entries above in maximum 2-3 sentences:"""
         
         # Stream response using OpenAI GPT
         def generate():
