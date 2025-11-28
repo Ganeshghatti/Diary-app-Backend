@@ -43,6 +43,7 @@ def upsert_diary(user_id, date, diary=None, mood_tracker=None, expense_tracker=N
             "last_update": now_utc,  # UTC timestamp
             "update_log": [{"timestamp": now_utc}],  # UTC timestamps
             "image_extraction_count": 0,  # Usage tracking for this day
+            "speech_to_text_count": 0,  # Usage tracking for speech-to-text this day
             "summary_generation_count": 0  # Usage tracking for this day
         }
         
@@ -74,19 +75,30 @@ def get_or_create_today_diary(user_id):
             "last_update": now_utc,
             "update_log": [{"timestamp": now_utc}],
             "image_extraction_count": 0,
+            "speech_to_text_count": 0,
             "summary_generation_count": 0
         }
         mongo.db.diaries.insert_one(diary_data)
         diary = mongo.db.diaries.find_one({"user_id": ObjectId(user_id), "date": date})
     
     # Ensure usage fields exist (for old entries)
-    if "image_extraction_count" not in diary:
-        mongo.db.diaries.update_one(
-            {"user_id": ObjectId(user_id), "date": date},
-            {"$set": {"image_extraction_count": 0, "summary_generation_count": 0}}
-        )
-        diary["image_extraction_count"] = 0
-        diary["summary_generation_count"] = 0
+    if "image_extraction_count" not in diary or "speech_to_text_count" not in diary or "summary_generation_count" not in diary:
+        update_fields = {}
+        if "image_extraction_count" not in diary:
+            update_fields["image_extraction_count"] = 0
+            diary["image_extraction_count"] = 0
+        if "speech_to_text_count" not in diary:
+            update_fields["speech_to_text_count"] = 0
+            diary["speech_to_text_count"] = 0
+        if "summary_generation_count" not in diary:
+            update_fields["summary_generation_count"] = 0
+            diary["summary_generation_count"] = 0
+        
+        if update_fields:
+            mongo.db.diaries.update_one(
+                {"user_id": ObjectId(user_id), "date": date},
+                {"$set": update_fields}
+            )
     
     return diary
 
@@ -95,6 +107,13 @@ def increment_image_extraction_count(user_id, date):
     mongo.db.diaries.update_one(
         {"user_id": ObjectId(user_id), "date": date},
         {"$inc": {"image_extraction_count": 1}}
+    )
+
+def increment_speech_to_text_count(user_id, date):
+    """Increment speech-to-text count for today's diary"""
+    mongo.db.diaries.update_one(
+        {"user_id": ObjectId(user_id), "date": date},
+        {"$inc": {"speech_to_text_count": 1}}
     )
 
 def increment_summary_generation_count(user_id, date):

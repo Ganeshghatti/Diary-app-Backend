@@ -13,3 +13,4 @@ openai
 pinecone-client
 pinecone
 google-cloud-vision
+google-cloud-speech
