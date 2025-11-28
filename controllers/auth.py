@@ -16,8 +16,8 @@ def request_otp():
     data = request.get_json()
     phone = data.get("phone")
     country_code = data.get("country_code", "+91")
-    if not phone or not phone.isdigit() or len(phone) != 10:
-        return jsonify({"error": "Phone number must be 10 digits."}), 400
+    if not phone or not phone.isdigit() or not (7 <= len(phone) <= 15):
+        return jsonify({"error": "Phone number must be between 7 and 15 digits."}), 400
     otp = str(random.randint(100000, 999999))
     try:
         save_otp(phone, otp, country_code)
@@ -33,8 +33,8 @@ def verify_otp():
     phone = data.get("phone")
     otp = data.get("otp")
     country_code = data.get("country_code", "+91")
-    if not phone or not phone.isdigit() or len(phone) != 10:
-        return jsonify({"error": "Phone number must be 10 digits."}), 400
+    if not phone or not phone.isdigit() or not (7 <= len(phone) <= 15):
+        return jsonify({"error": "Phone number must be between 7 and 15 digits."}), 400
     if not otp or not otp.isdigit() or len(otp) != 6:
         return jsonify({"error": "OTP must be a 6-digit number."}), 400
     
