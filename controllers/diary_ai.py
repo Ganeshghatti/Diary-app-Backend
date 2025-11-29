@@ -299,16 +299,25 @@ def speech_to_text():
     today_diary = get_or_create_today_diary(user_id)
     current_count = today_diary.get("speech_to_text_count", 0)
     date = today_diary.get("date")
+
     if current_count >= 10:
         return jsonify({"error": "Daily limit reached. You can use speech-to-text only 10 times per day."}), 429
+
     if "audio" not in request.files:
         return jsonify({"error": "No audio file provided."}), 400
+
     audio_file = request.files["audio"]
+
     if not audio_file.filename or not allowed_audio_file(audio_file.filename):
         return jsonify({"error": f"Invalid audio file. Allowed formats: {', '.join(sorted(ALLOWED_AUDIO_EXTENSIONS))}"}), 400
+
     data = request.form.to_dict() if request.form else {}
     requested_language = data.get("language_code", "hi-IN")
     indian_languages = ["hi-IN","en-IN","bn-IN","te-IN","mr-IN","ta-IN","gu-IN","kn-IN","ml-IN","or-IN","pa-IN","as-IN"]
+
+    print("FFMPEG:", which("ffmpeg"))
+    print("FFPROBE:", which("ffprobe"))
+
     if requested_language in indian_languages:
         language_code = requested_language
         alternative_languages = None
