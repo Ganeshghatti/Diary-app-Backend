@@ -17,7 +17,7 @@ from openai import OpenAI
 DIARY_IMAGES_FOLDER = "uploads/diary_images"
 DIARY_AUDIO_FOLDER = "uploads/diary_audio"
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
-ALLOWED_AUDIO_EXTENSIONS = {"wav", "flac", "mp3", "m4a", "ogg", "webm", "amr"}
+ALLOWED_AUDIO_EXTENSIONS = {"wav","flac","mp3","m4a","ogg","webm","amr","3gp"}
 
 # Initialize Pinecone and OpenAI for RAG
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
@@ -280,115 +280,69 @@ def extract_text_from_image_google_vision():
     except Exception as e:
         return jsonify({"error": f"Text extraction failed: {str(e)}"}), 500
 
+from flask import request, jsonify
+import datetime
+import os
+from pydub import AudioSegment
+from google.cloud import speech_v1 as speech
+
+ALLOWED_AUDIO_EXTENSIONS = {"wav","flac","mp3","m4a","ogg","webm","amr","3gp"}
+
 @user_required
 def speech_to_text():
-    """Convert speech/audio to text using Google Cloud Speech-to-Text API with Indian language support - max 10 times per day"""
     user_id = str(g.current_user["_id"])
-    
-    # Get or create today's diary entry (1 document = 1 day)
     today_diary = get_or_create_today_diary(user_id)
     current_count = today_diary.get("speech_to_text_count", 0)
     date = today_diary.get("date")
-    
-    # Check rate limit (10 per day)
     if current_count >= 10:
         return jsonify({"error": "Daily limit reached. You can use speech-to-text only 10 times per day."}), 429
-    
-    if 'audio' not in request.files:
+    if "audio" not in request.files:
         return jsonify({"error": "No audio file provided."}), 400
-    
-    audio_file = request.files['audio']
-    
+    audio_file = request.files["audio"]
     if not audio_file.filename or not allowed_audio_file(audio_file.filename):
-        return jsonify({"error": f"Invalid audio file. Allowed formats: {', '.join(ALLOWED_AUDIO_EXTENSIONS)}"}), 400
-    
-    # Get language code from request (optional, defaults to Hindi-India)
+        return jsonify({"error": f"Invalid audio file. Allowed formats: {', '.join(sorted(ALLOWED_AUDIO_EXTENSIONS))}"}), 400
     data = request.form.to_dict() if request.form else {}
     requested_language = data.get("language_code", "hi-IN")
-    
-    # Supported Indian languages
-    indian_languages = [
-        "hi-IN",  # Hindi
-        "en-IN",  # English (India)
-        "bn-IN",  # Bengali
-        "te-IN",  # Telugu
-        "mr-IN",  # Marathi
-        "ta-IN",  # Tamil
-        "gu-IN",  # Gujarati
-        "kn-IN",  # Kannada
-        "ml-IN",  # Malayalam
-        "or-IN",  # Odia
-        "pa-IN",  # Punjabi
-        "as-IN",  # Assamese
-    ]
-    
-    # Validate and set language code
+    indian_languages = ["hi-IN","en-IN","bn-IN","te-IN","mr-IN","ta-IN","gu-IN","kn-IN","ml-IN","or-IN","pa-IN","as-IN"]
     if requested_language in indian_languages:
         language_code = requested_language
         alternative_languages = None
     else:
-        # Default to Hindi if invalid language provided
         language_code = "hi-IN"
         alternative_languages = None
-    
     try:
-        # Ensure folder exists
         ensure_diary_audio_folder()
-        
-        # Save audio file with user_id and timestamp
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         timestamp = now_utc.strftime("%Y%m%d_%H%M%S")
         extension = audio_file.filename.rsplit(".", 1)[1].lower()
-        filename = f"{user_id}_{timestamp}.{extension}"
-        filepath = os.path.join(DIARY_AUDIO_FOLDER, filename)
-        
-        # Save audio file
-        audio_file.save(filepath)
-        
-        # Initialize Google Cloud Speech client
+        filename_original = f"{user_id}_{timestamp}.{extension}"
+        filepath_original = os.path.join(DIARY_AUDIO_FOLDER, filename_original)
+        audio_file.save(filepath_original)
+        try:
+            sound = AudioSegment.from_file(filepath_original)
+            sound = sound.set_frame_rate(16000).set_channels(1)
+            wav_path = os.path.join(DIARY_AUDIO_FOLDER, f"{user_id}_{timestamp}.wav")
+            sound.export(wav_path, format="wav")
+            filepath_for_stt = wav_path
+            extension_lower = "wav"
+        except Exception as conv_err:
+            return jsonify({"error": f"Audio conversion failed: {str(conv_err)}"}), 500
         speech_client = get_speech_client()
         if not speech_client:
-            return jsonify({
-                "error": "Google Cloud Speech-to-Text is not configured. Please ensure the service account file exists."
-            }), 500
-        
-        # Read audio file
-        with open(filepath, 'rb') as audio_content:
-            audio_data = audio_content.read()
-        
-        # Configure audio settings
+            return jsonify({"error": "Google Cloud Speech-to-Text is not configured. Please ensure the service account file exists."}), 500
+        with open(filepath_for_stt, "rb") as f:
+            audio_data = f.read()
         audio = speech.RecognitionAudio(content=audio_data)
-        
-        # Determine encoding based on file extension
-        extension_lower = extension.lower()
-        encoding_map = {
-            "wav": speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            "flac": speech.RecognitionConfig.AudioEncoding.FLAC,
-            "mp3": speech.RecognitionConfig.AudioEncoding.ENCODING_UNSPECIFIED,
-            "m4a": speech.RecognitionConfig.AudioEncoding.ENCODING_UNSPECIFIED,
-            "ogg": speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
-            "webm": speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
-            "amr": speech.RecognitionConfig.AudioEncoding.AMR,
-        }
-        audio_encoding = encoding_map.get(extension_lower, speech.RecognitionConfig.AudioEncoding.ENCODING_UNSPECIFIED)
-        
-        # Configure recognition settings
         config = speech.RecognitionConfig(
-            encoding=audio_encoding,
-            sample_rate_hertz=16000,  # Common sample rate, will auto-adjust if different
+            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+            sample_rate_hertz=16000,
             language_code=language_code,
             alternative_language_codes=alternative_languages,
             enable_automatic_punctuation=True,
-            model="latest_long",  # Best for longer audio/diary entries
+            model="latest_long"
         )
-        
-        # Perform speech recognition
         try:
             response = speech_client.recognize(config=config, audio=audio)
-
-            print(response)
-            
-            # Extract transcribed text
             transcribed_text = ""
             if response.results:
                 for result in response.results:
@@ -396,24 +350,24 @@ def speech_to_text():
                         transcribed_text += result.alternatives[0].transcript + " "
             else:
                 transcribed_text = ""
-            
-            # Increment usage count in today's diary entry
             increment_speech_to_text_count(user_id, date)
-            
+            audio_url = f"/uploads/diary_audio/{os.path.basename(filepath_original)}"
+            try:
+                if os.path.exists(wav_path):
+                    os.remove(wav_path)
+            except Exception:
+                pass
             return jsonify({
                 "text": transcribed_text.strip(),
                 "language_code": language_code,
-                "audio_url": f"/uploads/diary_audio/{filename}",
+                "audio_url": audio_url,
                 "remaining_uses": 10 - (current_count + 1)
             }), 200
-            
         except Exception as speech_error:
-            return jsonify({
-                "error": f"Speech recognition failed: {str(speech_error)}"
-            }), 500
-            
+            return jsonify({"error": f"Speech recognition failed: {str(speech_error)}"}), 500
     except Exception as e:
         return jsonify({"error": f"Speech-to-text processing failed: {str(e)}"}), 500
+
 
 @user_required
 def generate_summary():
