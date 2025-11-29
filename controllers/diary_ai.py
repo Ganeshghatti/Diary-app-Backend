@@ -1,6 +1,12 @@
 from flask import request, jsonify, g, Response, stream_with_context
 from middleware.user_required import user_required
-from models.diary import get_or_create_today_diary, increment_image_extraction_count, increment_speech_to_text_count, increment_summary_generation_count
+from models.diary import (
+    get_or_create_today_diary,
+    increment_image_extraction_count,
+    increment_speech_to_text_count,
+    increment_summary_generation_count,
+    upsert_diary
+)
 import pytesseract
 from PIL import Image
 import os
@@ -8,15 +14,18 @@ import datetime
 import json
 import google.generativeai as genai
 from google.cloud import vision
-from google.cloud import speech
+from google.cloud import speech_v1 as speech
 from google.oauth2 import service_account
 from pinecone import Pinecone
 from openai import OpenAI
-from pydub import AudioSegment
-from pydub.utils import which
+import shutil
+from config.db import mongo
+from bson import ObjectId
+# from pydub import AudioSegment
+# from pydub.utils import which
 
-AudioSegment.ffmpeg = which("ffmpeg")
-AudioSegment.ffprobe = which("ffprobe")
+# AudioSegment.ffmpeg = which("ffmpeg")
+# AudioSegment.ffprobe = which("ffprobe")
 
 # Upload folder for diary images and audio
 DIARY_IMAGES_FOLDER = "uploads/diary_images"
@@ -78,7 +87,6 @@ def get_speech_client():
 # Configure Tesseract path
 def configure_tesseract():
     """Try to configure Tesseract path automatically"""
-    import shutil
     
     # Common tesseract locations
     common_paths = [
@@ -285,14 +293,6 @@ def extract_text_from_image_google_vision():
     except Exception as e:
         return jsonify({"error": f"Text extraction failed: {str(e)}"}), 500
 
-from flask import request, jsonify
-import datetime
-import os
-from pydub import AudioSegment
-from google.cloud import speech_v1 as speech
-
-ALLOWED_AUDIO_EXTENSIONS = {"wav","flac","mp3","m4a","ogg","webm","amr","3gp"}
-
 @user_required
 def speech_to_text():
     user_id = str(g.current_user["_id"])
@@ -314,9 +314,6 @@ def speech_to_text():
     data = request.form.to_dict() if request.form else {}
     requested_language = data.get("language_code", "hi-IN")
     indian_languages = ["hi-IN","en-IN","bn-IN","te-IN","mr-IN","ta-IN","gu-IN","kn-IN","ml-IN","or-IN","pa-IN","as-IN"]
-
-    print("FFMPEG:", which("ffmpeg"))
-    print("FFPROBE:", which("ffprobe"))
 
     if requested_language in indian_languages:
         language_code = requested_language
@@ -446,10 +443,7 @@ def generate_summary():
                 
                 # Save summary to database after completion
                 try:
-                    from models.diary import upsert_diary
-                    from config.db import mongo
-                    from bson import ObjectId
-                    
+                   
                     # Get existing diary entry
                     existing_diary_entry = mongo.db.diaries.find_one({"user_id": ObjectId(user_id), "date": date})
                     
