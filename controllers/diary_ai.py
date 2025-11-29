@@ -21,11 +21,12 @@ from openai import OpenAI
 import shutil
 from config.db import mongo
 from bson import ObjectId
-# from pydub import AudioSegment
-# from pydub.utils import which
 
-# AudioSegment.ffmpeg = which("ffmpeg")
-# AudioSegment.ffprobe = which("ffprobe")
+if os.getenv("env") == "production":
+    from pydub import AudioSegment
+    from pydub.utils import which
+    AudioSegment.ffmpeg = which("ffmpeg")
+    AudioSegment.ffprobe = which("ffprobe")
 
 # Upload folder for diary images and audio
 DIARY_IMAGES_FOLDER = "uploads/diary_images"
