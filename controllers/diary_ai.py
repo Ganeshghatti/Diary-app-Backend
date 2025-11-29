@@ -6,17 +6,17 @@ from PIL import Image
 import os
 import datetime
 import json
-import subprocess
-import shutil
 import google.generativeai as genai
 from google.cloud import vision
-from google.cloud import speech_v1 as speech
+from google.cloud import speech
 from google.oauth2 import service_account
 from pinecone import Pinecone
 from openai import OpenAI
-from models.diary import upsert_diary
-from config.db import mongo
-from bson import ObjectId
+from pydub import AudioSegment
+from pydub.utils import which
+
+AudioSegment.ffmpeg = which("ffmpeg")
+AudioSegment.ffprobe = which("ffprobe")
 
 # Upload folder for diary images and audio
 DIARY_IMAGES_FOLDER = "uploads/diary_images"
@@ -78,6 +78,7 @@ def get_speech_client():
 # Configure Tesseract path
 def configure_tesseract():
     """Try to configure Tesseract path automatically"""
+    import shutil
     
     # Common tesseract locations
     common_paths = [
@@ -284,6 +285,14 @@ def extract_text_from_image_google_vision():
     except Exception as e:
         return jsonify({"error": f"Text extraction failed: {str(e)}"}), 500
 
+from flask import request, jsonify
+import datetime
+import os
+from pydub import AudioSegment
+from google.cloud import speech_v1 as speech
+
+ALLOWED_AUDIO_EXTENSIONS = {"wav","flac","mp3","m4a","ogg","webm","amr","3gp"}
+
 @user_required
 def speech_to_text():
     user_id = str(g.current_user["_id"])
@@ -306,6 +315,9 @@ def speech_to_text():
     requested_language = data.get("language_code", "hi-IN")
     indian_languages = ["hi-IN","en-IN","bn-IN","te-IN","mr-IN","ta-IN","gu-IN","kn-IN","ml-IN","or-IN","pa-IN","as-IN"]
 
+    print("FFMPEG:", which("ffmpeg"))
+    print("FFPROBE:", which("ffprobe"))
+
     if requested_language in indian_languages:
         language_code = requested_language
         alternative_languages = None
@@ -321,34 +333,12 @@ def speech_to_text():
         filepath_original = os.path.join(DIARY_AUDIO_FOLDER, filename_original)
         audio_file.save(filepath_original)
         try:
-            # Convert audio to WAV format using ffmpeg directly (16kHz, mono)
+            sound = AudioSegment.from_file(filepath_original)
+            sound = sound.set_frame_rate(16000).set_channels(1)
             wav_path = os.path.join(DIARY_AUDIO_FOLDER, f"{user_id}_{timestamp}.wav")
-            
-            # Find ffmpeg executable
-            ffmpeg_path = shutil.which("ffmpeg")
-            if not ffmpeg_path:
-                return jsonify({"error": "ffmpeg is not installed or not found in PATH. Please install ffmpeg."}), 500
-            
-            # Use ffmpeg to convert audio to WAV (16kHz, mono, LINEAR16)
-            subprocess.run(
-                [
-                    ffmpeg_path,
-                    "-i", filepath_original,
-                    "-ar", "16000",  # Sample rate: 16kHz
-                    "-ac", "1",      # Channels: mono
-                    "-f", "wav",     # Format: WAV
-                    "-y",             # Overwrite output file
-                    wav_path
-                ],
-                check=True,
-                capture_output=True,
-                stderr=subprocess.PIPE
-            )
+            sound.export(wav_path, format="wav")
             filepath_for_stt = wav_path
             extension_lower = "wav"
-        except subprocess.CalledProcessError as conv_err:
-            error_msg = conv_err.stderr.decode('utf-8') if conv_err.stderr else str(conv_err)
-            return jsonify({"error": f"Audio conversion failed: {error_msg}"}), 500
         except Exception as conv_err:
             return jsonify({"error": f"Audio conversion failed: {str(conv_err)}"}), 500
         speech_client = get_speech_client()
@@ -456,7 +446,10 @@ def generate_summary():
                 
                 # Save summary to database after completion
                 try:
-                  
+                    from models.diary import upsert_diary
+                    from config.db import mongo
+                    from bson import ObjectId
+                    
                     # Get existing diary entry
                     existing_diary_entry = mongo.db.diaries.find_one({"user_id": ObjectId(user_id), "date": date})
                     
