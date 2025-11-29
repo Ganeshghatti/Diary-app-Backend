@@ -13,8 +13,10 @@ from google.oauth2 import service_account
 from pinecone import Pinecone
 from openai import OpenAI
 from pydub import AudioSegment
-AudioSegment.ffmpeg = "/usr/bin/ffmpeg"
-AudioSegment.ffprobe = "/usr/bin/ffprobe"
+from pydub.utils import which
+
+AudioSegment.ffmpeg = which("ffmpeg")
+AudioSegment.ffprobe = which("ffprobe")
 
 # Upload folder for diary images and audio
 DIARY_IMAGES_FOLDER = "uploads/diary_images"
