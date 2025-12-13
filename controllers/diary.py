@@ -1,14 +1,15 @@
 from flask import request, jsonify, g
 from models.diary import (
     upsert_diary,
-    get_diary_by_date_range,
-    get_month_diaries_by_date_range,
-    delete_diary_by_date_range,
-    get_all_diaries
+    get_diary_by_local_date,
+    get_month_diaries_by_local_date,
+    delete_diary_by_local_date,
+    get_all_diaries,
+    get_all_diaries_count
 )
 from middleware.user_required import user_required
-from utils.timezone import format_datetime_for_response, convert_user_date_to_utc_range, convert_user_month_to_utc_range
 import datetime
+import pytz
 from pinecone import Pinecone
 from openai import OpenAI
 import os
@@ -28,11 +29,11 @@ def create_embedding(text):
     except Exception as e:
         raise Exception(f"Failed to create embedding: {str(e)}")
 
-def prepare_text_for_embedding(diary_obj, mood_tracker=None, expense_tracker=None, health_stats=None, date=None):
+def prepare_text_for_embedding(diary_obj, mood_tracker=None, expense_tracker=None, health_stats=None, local_date=None):
     """Prepare text content from diary entry for embedding"""
     text_parts = []
     
-    text_parts.append(f"Date: {date}")
+    text_parts.append(f"Date: {local_date}")
     # Add diary content and summary
     if diary_obj:
         if isinstance(diary_obj, dict):
@@ -67,22 +68,22 @@ def prepare_text_for_embedding(diary_obj, mood_tracker=None, expense_tracker=Non
     # Return a default text if empty to ensure we always have something to embed
     return combined_text if combined_text else "Diary entry"
 
-def upsert_to_pinecone(user_id, date, diary_obj, mood_tracker, expense_tracker, health_stats):
+def upsert_to_pinecone(user_id, local_date, diary_obj, mood_tracker, expense_tracker, health_stats):
     """Upsert diary entry to Pinecone vector database"""
     try:
         # Prepare text for embedding
-        text_to_embed = prepare_text_for_embedding(diary_obj, mood_tracker, expense_tracker, health_stats, date)
+        text_to_embed = prepare_text_for_embedding(diary_obj, mood_tracker, expense_tracker, health_stats, local_date)
         
         # Create embedding
         embedding = create_embedding(text_to_embed)
         
-        # Create unique vector ID (user_id_date)
-        vector_id = f"{user_id}_{date}"
+        # Create unique vector ID (user_id_local_date)
+        vector_id = f"{user_id}_{local_date}"
         
         # Prepare metadata
         metadata = {
             "user_id": user_id,
-            "date": date,
+            "date": local_date,  # Keep "date" key for backward compatibility with Pinecone
             "text": text_to_embed
         }
         
@@ -106,14 +107,20 @@ def upsert_to_pinecone(user_id, date, diary_obj, mood_tracker, expense_tracker, 
 
 @user_required
 def upsert_diary_entry():
-    """Create or update a diary entry (upsert) - everything stored in UTC"""
+    """Create or update a diary entry (upsert)"""
     data = request.get_json()
     user_id = str(g.current_user["_id"])
     
-    # Get user's timezone from profile
-    user_timezone = g.current_user.get("timezone", "UTC")
+    # Get timezone from user model
+    timezone = g.current_user.get("timezone", "UTC")
     
-    # Get date from request body (optional)
+    # Validate timezone
+    try:
+        pytz.timezone(timezone)
+    except pytz.exceptions.UnknownTimeZoneError:
+        return jsonify({"error": f"Invalid timezone: {timezone}"}), 400
+    
+    # Get date from request body (optional) - frontend uses "date" parameter
     date_input = data.get("date")
     
     if date_input:
@@ -123,19 +130,18 @@ def upsert_diary_entry():
         except ValueError:
             return jsonify({"error": "date must be in DD-MM-YYYY format."}), 400
         
-        date = date_input
+        local_date = date_input
     else:
-        # Use current date in user's timezone if not provided
+        # Use current date in provided timezone if not provided
         try:
-            import pytz
-            user_tz = pytz.timezone(user_timezone)
+            user_tz = pytz.timezone(timezone)
             now_utc = datetime.datetime.now(datetime.timezone.utc)
             now_user_tz = now_utc.astimezone(user_tz)
-            date = now_user_tz.strftime("%d-%m-%Y")
+            local_date = now_user_tz.strftime("%d-%m-%Y")
         except:
             # Fallback to UTC if timezone invalid
             now_utc = datetime.datetime.now(datetime.timezone.utc)
-            date = now_utc.strftime("%d-%m-%Y")
+            local_date = now_utc.strftime("%d-%m-%Y")
     
     # Extract diary object (containing content and summary)
     diary_obj = data.get("diary")
@@ -184,26 +190,28 @@ def upsert_diary_entry():
                 return jsonify({"error": "value must be a number."}), 400
     
     try:
-        result = upsert_diary(user_id, date, diary_obj, mood_tracker, expense_tracker, health_stats)
+        result = upsert_diary(user_id, local_date, timezone, diary_obj, mood_tracker, expense_tracker, health_stats)
         
         # Embed and store in Pinecone vector database
         # Only embed if there's meaningful content to embed
         print("Checking if there's meaningful content to embed")
         if diary_obj or mood_tracker or expense_tracker or health_stats:
             print("Embedding and storing in Pinecone vector database")
-            upsert_to_pinecone(user_id, date, diary_obj, mood_tracker, expense_tracker, health_stats)
+            upsert_to_pinecone(user_id, local_date, diary_obj, mood_tracker, expense_tracker, health_stats)
             print("Embedding and storing in Pinecone vector database completed")
         
         if result["upserted"]:
             return jsonify({
                 "message": "Diary entry created successfully.",
-                "date": date,
+                "date": local_date,  # Return as "date" for frontend compatibility
+                "timezone": timezone,
                 "id": str(result["result"].inserted_id)
             }), 201
         else:
             return jsonify({
                 "message": "Diary entry updated successfully.",
-                "date": date
+                "date": local_date,  # Return as "date" for frontend compatibility
+                "timezone": timezone
             }), 200
         
 
@@ -212,7 +220,7 @@ def upsert_diary_entry():
 
 @user_required
 def get_diary_entry():
-    """Get a diary entry by date - converts user's date to UTC range and queries by created_at"""
+    """Get a diary entry by date"""
     date = request.args.get("date")
     user_id = str(g.current_user["_id"])
     
@@ -224,28 +232,24 @@ def get_diary_entry():
     except ValueError:
         return jsonify({"error": "date must be in DD-MM-YYYY format."}), 400
     
-    # Get user's timezone from profile
-    user_timezone = g.current_user.get("timezone", "UTC")
-    
-    # Convert user's date to UTC date range
-    start_utc, end_utc = convert_user_date_to_utc_range(date, user_timezone)
+    local_date = date  # Use date from request as local_date internally
     
     try:
-        diary = get_diary_by_date_range(user_id, start_utc, end_utc)
+        diary = get_diary_by_local_date(user_id, local_date)
         if diary:
             # Convert ObjectId to string for JSON serialization
             diary["_id"] = str(diary["_id"])
             diary["user_id"] = str(diary["user_id"])
             
-            # Convert timestamps to user's timezone for response
-            if "created_at" in diary:
-                diary["created_at"] = format_datetime_for_response(diary["created_at"], user_timezone)
-            if "last_update" in diary:
-                diary["last_update"] = format_datetime_for_response(diary["last_update"], user_timezone)
+            # Convert timestamps to ISO format for response
+            if "created_at" in diary and isinstance(diary["created_at"], datetime.datetime):
+                diary["created_at"] = diary["created_at"].isoformat()
+            if "last_update" in diary and isinstance(diary["last_update"], datetime.datetime):
+                diary["last_update"] = diary["last_update"].isoformat()
             if "update_log" in diary and isinstance(diary["update_log"], list):
                 for log_entry in diary["update_log"]:
-                    if "timestamp" in log_entry:
-                        log_entry["timestamp"] = format_datetime_for_response(log_entry["timestamp"], user_timezone)
+                    if "timestamp" in log_entry and isinstance(log_entry["timestamp"], datetime.datetime):
+                        log_entry["timestamp"] = log_entry["timestamp"].isoformat()
             
             return jsonify({"diary": diary}), 200
         else:
@@ -255,7 +259,7 @@ def get_diary_entry():
 
 @user_required
 def delete_diary_entry():
-    """Delete a diary entry by date - converts user's date to UTC range and queries by created_at"""
+    """Delete a diary entry by date"""
     date = request.args.get("date")
     user_id = str(g.current_user["_id"])
     
@@ -267,14 +271,10 @@ def delete_diary_entry():
     except ValueError:
         return jsonify({"error": "date must be in DD-MM-YYYY format."}), 400
     
-    # Get user's timezone from profile
-    user_timezone = g.current_user.get("timezone", "UTC")
-    
-    # Convert user's date to UTC date range
-    start_utc, end_utc = convert_user_date_to_utc_range(date, user_timezone)
+    local_date = date  # Use date from request as local_date internally
     
     try:
-        result = delete_diary_by_date_range(user_id, start_utc, end_utc)
+        result = delete_diary_by_local_date(user_id, local_date)
         if result.deleted_count > 0:
             return jsonify({"message": "Diary entry deleted successfully."}), 200
         else:
@@ -284,43 +284,35 @@ def delete_diary_entry():
 
 @user_required
 def get_month_diaries_entries():
-    """Get all diary entries for current month - converts user's month to UTC range and queries by created_at"""
+    """Get all diary entries for current month"""
     user_id = str(g.current_user["_id"])
     
-    # Get user's timezone from profile
-    user_timezone = g.current_user.get("timezone", "UTC")
+    # Get year and month from query params (optional, defaults to current month in UTC)
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
     
-    # Get current year and month in user's timezone
-    import pytz
-    try:
-        user_tz = pytz.timezone(user_timezone)
-    except pytz.exceptions.UnknownTimeZoneError:
-        user_tz = pytz.UTC
-    
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
-    now_user_tz = now_utc.astimezone(user_tz)
-    year = now_user_tz.year
-    month = now_user_tz.month
-    
-    # Convert user's month to UTC date range
-    start_utc, end_utc = convert_user_month_to_utc_range(year, month, user_timezone)
+    if not year or not month:
+        # Use current month in UTC if not provided
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        year = year or now_utc.year
+        month = month or now_utc.month
     
     try:
-        diaries = get_month_diaries_by_date_range(user_id, start_utc, end_utc)
-        # Convert ObjectIds to strings and timestamps to user timezone
+        diaries = get_month_diaries_by_local_date(user_id, year, month)
+        # Convert ObjectIds to strings and timestamps to ISO format
         for diary in diaries:
             diary["_id"] = str(diary["_id"])
             diary["user_id"] = str(diary["user_id"])
             
-            # Convert timestamps to user's timezone for response
-            if "created_at" in diary:
-                diary["created_at"] = format_datetime_for_response(diary["created_at"], user_timezone)
-            if "last_update" in diary:
-                diary["last_update"] = format_datetime_for_response(diary["last_update"], user_timezone)
+            # Convert timestamps to ISO format for response
+            if "created_at" in diary and isinstance(diary["created_at"], datetime.datetime):
+                diary["created_at"] = diary["created_at"].isoformat()
+            if "last_update" in diary and isinstance(diary["last_update"], datetime.datetime):
+                diary["last_update"] = diary["last_update"].isoformat()
             if "update_log" in diary and isinstance(diary["update_log"], list):
                 for log_entry in diary["update_log"]:
-                    if "timestamp" in log_entry:
-                        log_entry["timestamp"] = format_datetime_for_response(log_entry["timestamp"], user_timezone)
+                    if "timestamp" in log_entry and isinstance(log_entry["timestamp"], datetime.datetime):
+                        log_entry["timestamp"] = log_entry["timestamp"].isoformat()
         
         return jsonify({"diaries": diaries}), 200
     except Exception as e:
@@ -328,28 +320,50 @@ def get_month_diaries_entries():
 
 @user_required
 def get_all_diaries_entries():
-    """Get all diary entries for the user"""
+    """Get all diary entries for the user with pagination (30 entries per page)"""
     user_id = str(g.current_user["_id"])
     
+    # Get page number from query parameter (default to 1)
     try:
-        diaries = get_all_diaries(user_id)
-        # Convert ObjectIds to strings and timestamps to user timezone
-        user_timezone = g.current_user.get("timezone", "UTC")
+        page = int(request.args.get("page", 1))
+        if page < 1:
+            page = 1
+    except (ValueError, TypeError):
+        page = 1
+    
+    try:
+        # Get paginated diaries
+        diaries = get_all_diaries(user_id, page=page, limit=30)
         
+        # Get total count for pagination metadata
+        total_count = get_all_diaries_count(user_id)
+        total_pages = (total_count + 29) // 30  # Ceiling division: (total + limit - 1) // limit
+        
+        # Convert ObjectIds to strings and timestamps to ISO format
         for diary in diaries:
             diary["_id"] = str(diary["_id"])
             diary["user_id"] = str(diary["user_id"])
             
-            # Convert timestamps to user's timezone for response
-            if "created_at" in diary:
-                diary["created_at"] = format_datetime_for_response(diary["created_at"], user_timezone)
-            if "last_update" in diary:
-                diary["last_update"] = format_datetime_for_response(diary["last_update"], user_timezone)
+            # Convert timestamps to ISO format for response
+            if "created_at" in diary and isinstance(diary["created_at"], datetime.datetime):
+                diary["created_at"] = diary["created_at"].isoformat()
+            if "last_update" in diary and isinstance(diary["last_update"], datetime.datetime):
+                diary["last_update"] = diary["last_update"].isoformat()
             if "update_log" in diary and isinstance(diary["update_log"], list):
                 for log_entry in diary["update_log"]:
-                    if "timestamp" in log_entry:
-                        log_entry["timestamp"] = format_datetime_for_response(log_entry["timestamp"], user_timezone)
+                    if "timestamp" in log_entry and isinstance(log_entry["timestamp"], datetime.datetime):
+                        log_entry["timestamp"] = log_entry["timestamp"].isoformat()
         
-        return jsonify({"diaries": diaries}), 200
+        return jsonify({
+            "diaries": diaries,
+            "pagination": {
+                "page": page,
+                "limit": 30,
+                "total": total_count,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

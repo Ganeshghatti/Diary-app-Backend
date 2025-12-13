@@ -142,10 +142,13 @@ def extract_text_from_image():
     """Extract text from handwritten diary image - max 3 times per day"""
     user_id = str(g.current_user["_id"])
     
+    # Get timezone from user model
+    timezone = g.current_user.get("timezone", "UTC")
+    
     # Get or create today's diary entry (1 document = 1 day)
-    today_diary = get_or_create_today_diary(user_id)
+    today_diary = get_or_create_today_diary(user_id, timezone)
     current_count = today_diary.get("image_extraction_count", 0)
-    date = today_diary.get("date")
+    local_date = today_diary.get("local_date")
     
     # Check rate limit (3 per day)
     if current_count >= 3:
@@ -199,7 +202,7 @@ def extract_text_from_image():
             }), 500
         
         # Increment usage count in today's diary entry
-        increment_image_extraction_count(user_id, date)
+        increment_image_extraction_count(user_id, local_date)
         
         return jsonify({
             "text": text.strip(),
@@ -214,10 +217,13 @@ def extract_text_from_image_google_vision():
     """Extract text from handwritten diary image using Google Cloud Vision - max 3 times per day"""
     user_id = str(g.current_user["_id"])
     
+    # Get timezone from user model
+    timezone = g.current_user.get("timezone", "UTC")
+    
     # Get or create today's diary entry (1 document = 1 day)
-    today_diary = get_or_create_today_diary(user_id)
+    today_diary = get_or_create_today_diary(user_id, timezone)
     current_count = today_diary.get("image_extraction_count", 0)
-    date = today_diary.get("date")
+    local_date = today_diary.get("local_date")
     
     # Check rate limit (3 per day)
     if current_count >= 3:
@@ -284,7 +290,7 @@ def extract_text_from_image_google_vision():
             }), 500
         
         # Increment usage count in today's diary entry
-        increment_image_extraction_count(user_id, date)
+        increment_image_extraction_count(user_id, local_date)
         
         return jsonify({
             "text": extracted_text.strip(),
@@ -297,9 +303,13 @@ def extract_text_from_image_google_vision():
 @user_required
 def speech_to_text():
     user_id = str(g.current_user["_id"])
-    today_diary = get_or_create_today_diary(user_id)
+    
+    # Get timezone from user model
+    timezone = g.current_user.get("timezone", "UTC")
+    
+    today_diary = get_or_create_today_diary(user_id, timezone)
     current_count = today_diary.get("speech_to_text_count", 0)
-    date = today_diary.get("date")
+    local_date = today_diary.get("local_date")
 
     if current_count >= 10:
         return jsonify({"error": "Daily limit reached. You can use speech-to-text only 10 times per day."}), 429
@@ -362,7 +372,7 @@ def speech_to_text():
                         transcribed_text += result.alternatives[0].transcript + " "
             else:
                 transcribed_text = ""
-            increment_speech_to_text_count(user_id, date)
+            increment_speech_to_text_count(user_id, local_date)
             audio_url = f"/uploads/diary_audio/{os.path.basename(filepath_original)}"
             try:
                 if os.path.exists(wav_path):
@@ -386,10 +396,13 @@ def generate_summary():
     """Generate summary of diary text using GPT API - max 3 times per day, streaming response. Saves summary to DB after completion."""
     user_id = str(g.current_user["_id"])
     
+    # Get timezone from user model
+    timezone = g.current_user.get("timezone", "UTC")
+    
     # Get or create today's diary entry (1 document = 1 day)
-    today_diary = get_or_create_today_diary(user_id)
+    today_diary = get_or_create_today_diary(user_id, timezone)
     current_count = today_diary.get("summary_generation_count", 0)
-    date = today_diary.get("date")
+    local_date = today_diary.get("local_date")
     
     # Check rate limit (3 per day)
     if current_count >= 3:
@@ -414,7 +427,7 @@ def generate_summary():
         user_message = f"Please provide a concise summary of the following diary entry in 2-3 sentences:\n\n{diary_text}"
         
         # Increment usage count in today's diary entry
-        increment_summary_generation_count(user_id, date)
+        increment_summary_generation_count(user_id, local_date)
         
         # Stream response and collect full summary
         def generate():
@@ -446,7 +459,7 @@ def generate_summary():
                 try:
                    
                     # Get existing diary entry
-                    existing_diary_entry = mongo.db.diaries.find_one({"user_id": ObjectId(user_id), "date": date})
+                    existing_diary_entry = mongo.db.diaries.find_one({"user_id": ObjectId(user_id), "local_date": local_date})
                     
                     if existing_diary_entry:
                         # Get existing diary object or create new one
@@ -457,11 +470,11 @@ def generate_summary():
                         # Update summary
                         diary_obj["summary"] = full_summary.strip()
                         
-                        # Save to database (parameter is 'diary', not 'diary_obj')
-                        upsert_diary(user_id, date, diary=diary_obj)
+                        # Save to database
+                        upsert_diary(user_id, local_date, timezone, diary=diary_obj)
                     else:
                         # Create new diary entry with summary
-                        upsert_diary(user_id, date, diary={"summary": full_summary.strip()})
+                        upsert_diary(user_id, local_date, timezone, diary={"summary": full_summary.strip()})
                     
                 except Exception as db_error:
                     # Log error but don't fail the stream
