@@ -422,9 +422,9 @@ def generate_summary():
         return jsonify({"error": "OpenAI API key not configured on server."}), 500
     
     try:
-        # Create prompt for GPT
-        system_message = "You are a helpful assistant that creates concise, thoughtful summaries of diary entries."
-        user_message = f"Please provide a concise summary of the following diary entry in 2-3 sentences:\n\n{diary_text}"
+        # Create prompt for GPT - focus on creating an actual summary, not an explanation
+        system_message = "You are a helpful assistant that creates concise summaries of diary entries. Your task is to condense the key points and main ideas into a brief summary, not to explain what the entry is about."
+        user_message = f"Summarize the following diary entry by condensing the key points and main ideas into 2-3 sentences. Do not explain what the entry is about - create an actual summary that captures the essence:\n\n{diary_text}"
         
         # Increment usage count in today's diary entry
         increment_summary_generation_count(user_id, local_date)
