@@ -176,9 +176,9 @@ def delete_diary_by_local_date(user_id, local_date):
     return result
 
 def get_all_diaries(user_id, page=1, limit=30):
-    """Get all diary entries for a user with pagination"""
+    """Get all diary entries for a user with pagination, sorted by last_update descending (latest entries first)"""
     skip = (page - 1) * limit
-    return list(mongo.db.diaries.find({"user_id": ObjectId(user_id)}).sort("created_at", -1).skip(skip).limit(limit))
+    return list(mongo.db.diaries.find({"user_id": ObjectId(user_id)}).sort("last_update", -1).skip(skip).limit(limit))
 
 def get_all_diaries_count(user_id):
     """Get total count of diary entries for a user"""
