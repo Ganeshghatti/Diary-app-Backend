@@ -176,9 +176,37 @@ def delete_diary_by_local_date(user_id, local_date):
     return result
 
 def get_all_diaries(user_id, page=1, limit=30):
-    """Get all diary entries for a user with pagination, sorted by last_update descending (latest entries first)"""
+    """Get all diary entries for a user with pagination, sorted by local_date descending (latest entries first)"""
     skip = (page - 1) * limit
-    return list(mongo.db.diaries.find({"user_id": ObjectId(user_id)}).sort("last_update", -1).skip(skip).limit(limit))
+    
+    # Use aggregation pipeline to parse local_date (DD-MM-YYYY) and sort chronologically
+    pipeline = [
+        {"$match": {"user_id": ObjectId(user_id)}},
+        {
+            "$addFields": {
+                "parsed_date": {
+                    "$dateFromString": {
+                        "dateString": {
+                            "$concat": [
+                                {"$arrayElemAt": [{"$split": ["$local_date", "-"]}, 2]},  # Year
+                                "-",
+                                {"$arrayElemAt": [{"$split": ["$local_date", "-"]}, 1]},  # Month
+                                "-",
+                                {"$arrayElemAt": [{"$split": ["$local_date", "-"]}, 0]}   # Day
+                            ]
+                        },
+                        "format": "%Y-%m-%d"
+                    }
+                }
+            }
+        },
+        {"$sort": {"parsed_date": -1}},  # Descending: latest dates first
+        {"$skip": skip},
+        {"$limit": limit},
+        {"$project": {"parsed_date": 0}}  # Remove the temporary parsed_date field
+    ]
+    
+    return list(mongo.db.diaries.aggregate(pipeline))
 
 def get_all_diaries_count(user_id):
     """Get total count of diary entries for a user"""
