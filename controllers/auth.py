@@ -11,6 +11,9 @@ import os
 
 limiter = Limiter(key_func=get_remote_address, app=None, default_limits=[])
 
+TEST_PHONE_NUMBER = "9999999999"
+TEST_PHONE_OTP = "123456"
+
 @limiter.limit("5 per hour", key_func=get_remote_address)
 def request_otp():
     data = request.get_json()
@@ -18,11 +21,13 @@ def request_otp():
     country_code = data.get("country_code", "+91")
     if not phone or not phone.isdigit() or not (7 <= len(phone) <= 15):
         return jsonify({"error": "Phone number must be between 7 and 15 digits."}), 400
-    otp = str(random.randint(100000, 999999))
+    otp = TEST_PHONE_OTP if phone == TEST_PHONE_NUMBER else str(random.randint(100000, 999999))
     try:
         save_otp(phone, otp, country_code)
     except Exception as e:
         return jsonify({"error": f"Failed to save OTP: {str(e)}"}), 500
+    if phone == TEST_PHONE_NUMBER:
+        return jsonify({"message": "OTP stored successfully for test account"}), 200
     if send_otp(phone, otp, country_code):
         return jsonify({"message": "OTP sent successfully"}), 200
     else:
