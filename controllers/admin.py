@@ -255,6 +255,15 @@ def get_engagement_stats():
     try:
         now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         
+        def count_users_as_of(end_date):
+            """Count users that existed up to a given timestamp."""
+            return mongo.db.users.count_documents({
+                "$or": [
+                    {"created_at": {"$lte": end_date}},
+                    {"created_at": {"$exists": False}}
+                ]
+            })
+        
         # Today
         today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = now_utc
@@ -346,12 +355,13 @@ def get_engagement_stats():
                     {"last_update": {"$gte": day_start, "$lte": day_end}}
                 ]
             })
+            day_total_users = count_users_as_of(day_end)
             
             daily_engagement.append({
                 "date": day_start.strftime("%Y-%m-%d"),
                 "active_users": len(day_users),
-                "total_users": total_users,
-                "engagement_rate": round((len(day_users) / total_users * 100) if total_users > 0 else 0, 2)
+                "total_users": day_total_users,
+                "engagement_rate": round((len(day_users) / day_total_users * 100) if day_total_users > 0 else 0, 2)
             })
         
         # Weekly breakdown for last 12 weeks (for graph)
@@ -368,13 +378,14 @@ def get_engagement_stats():
                     {"last_update": {"$gte": week_start_date, "$lte": week_end_date}}
                 ]
             })
+            week_total_users = count_users_as_of(week_end_date)
             
             weekly_engagement.append({
                 "week_start": week_start_date.strftime("%Y-%m-%d"),
                 "week_end": week_end_date.strftime("%Y-%m-%d"),
                 "active_users": len(week_users),
-                "total_users": total_users,
-                "engagement_rate": round((len(week_users) / total_users * 100) if total_users > 0 else 0, 2)
+                "total_users": week_total_users,
+                "engagement_rate": round((len(week_users) / week_total_users * 100) if week_total_users > 0 else 0, 2)
             })
         
         # Monthly breakdown for last 12 months (for graph)
@@ -398,13 +409,14 @@ def get_engagement_stats():
                     {"last_update": {"$gte": month_start_date, "$lte": month_end_date}}
                 ]
             })
+            month_total_users = count_users_as_of(month_end_date)
             
             monthly_engagement.append({
                 "month": month_start_date.strftime("%Y-%m"),
                 "month_name": month_start_date.strftime("%B %Y"),
                 "active_users": len(month_users),
-                "total_users": total_users,
-                "engagement_rate": round((len(month_users) / total_users * 100) if total_users > 0 else 0, 2)
+                "total_users": month_total_users,
+                "engagement_rate": round((len(month_users) / month_total_users * 100) if month_total_users > 0 else 0, 2)
             })
         
         return jsonify({
