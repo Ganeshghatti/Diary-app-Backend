@@ -8,11 +8,32 @@ from models.user import find_user, create_user
 from models.otp import save_otp, get_otp, delete_otp
 from utils.sms import send_otp
 import os
+import pytz
 
 limiter = Limiter(key_func=get_remote_address, app=None, default_limits=[])
 
 TEST_PHONE_NUMBER = "9999999999"
 TEST_PHONE_OTP = "123456"
+TIMEZONE_ALIASES = {
+    # Keep canonical IANA timezone names in DB.
+    "Asia/Calcutta": "Asia/Kolkata"
+}
+
+def normalize_timezone(timezone):
+    """Normalize timezone aliases and fallback to UTC for invalid values."""
+    if not timezone:
+        return "UTC"
+    
+    normalized = TIMEZONE_ALIASES.get(timezone.strip(), timezone.strip())
+    
+    if normalized == "UTC":
+        return "UTC"
+    
+    try:
+        pytz.timezone(normalized)
+        return normalized
+    except pytz.exceptions.UnknownTimeZoneError:
+        return "UTC"
 
 @limiter.limit("5 per hour", key_func=get_remote_address)
 def request_otp():
@@ -61,20 +82,16 @@ def verify_otp():
     if not user:
         # Only set timezone when creating NEW user (signup)
         # Get timezone from header (try both uppercase and title case for compatibility)
-        timezone = request.headers.get("X-Timezone") or request.headers.get("x-timezone") or "UTC"
+        raw_timezone = request.headers.get("X-Timezone") or request.headers.get("x-timezone") or "UTC"
         
         # Log received timezone for debugging
-        print(f"Received timezone header for new user: {timezone}")
+        print(f"Received timezone header for new user: {raw_timezone}")
         
-        # Validate timezone
-        if timezone != "UTC":
-            try:
-                import pytz
-                pytz.timezone(timezone)
-                print(f"Timezone validated: {timezone}")
-            except pytz.exceptions.UnknownTimeZoneError:
-                print(f"Invalid timezone '{timezone}', falling back to UTC")
-                timezone = "UTC"  # Fallback to UTC if invalid
+        timezone = normalize_timezone(raw_timezone)
+        if timezone != raw_timezone:
+            print(f"Timezone normalized from '{raw_timezone}' to '{timezone}'")
+        else:
+            print(f"Timezone validated: {timezone}")
         
         try:
             create_user(phone, timezone, country_code)
