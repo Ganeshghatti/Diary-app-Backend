@@ -8,6 +8,7 @@ from models.diary import (
     get_all_diaries_count
 )
 from middleware.user_required import user_required
+from utils.diary_image import enrich_diary_image_for_response
 import datetime
 import pytz
 from pinecone import Pinecone
@@ -44,21 +45,28 @@ def prepare_text_for_embedding(diary_obj, mood_tracker=None, expense_tracker=Non
     if mood_tracker and isinstance(mood_tracker, list) and len(mood_tracker) > 0:
         text_parts.append(f"Moods: {', '.join(mood_tracker)}")
     
-    # Add expense tracker summary
+    # Add expense tracker (name + amount)
     if expense_tracker and isinstance(expense_tracker, list) and len(expense_tracker) > 0:
         expense_summary = []
         for item in expense_tracker:
             if isinstance(item, dict) and "name" in item:
-                expense_summary.append(item["name"])
+                if "amount" in item:
+                    expense_summary.append(f"{item['name']}: {item['amount']}")
+                else:
+                    expense_summary.append(item["name"])
         if expense_summary:
             text_parts.append(f"Expenses: {', '.join(expense_summary)}")
-    
+
     # Add health stats summary
     if health_stats and isinstance(health_stats, list) and len(health_stats) > 0:
         health_summary = []
         for item in health_stats:
             if isinstance(item, dict) and "name" in item and "value" in item:
-                health_summary.append(f"{item['name']}: {item['value']}")
+                unit = item.get("unit", "")
+                if unit:
+                    health_summary.append(f"{item['name']}: {item['value']} {unit}")
+                else:
+                    health_summary.append(f"{item['name']}: {item['value']}")
         if health_summary:
             text_parts.append(f"Health: {', '.join(health_summary)}")
     
@@ -73,7 +81,6 @@ def upsert_to_pinecone(user_id, local_date, diary_obj, mood_tracker, expense_tra
     try:
         # Prepare text for embedding
         text_to_embed = prepare_text_for_embedding(diary_obj, mood_tracker, expense_tracker, health_stats, local_date)
-        
         # Create embedding
         embedding = create_embedding(text_to_embed)
         
@@ -193,12 +200,8 @@ def upsert_diary_entry():
         result = upsert_diary(user_id, local_date, timezone, diary_obj, mood_tracker, expense_tracker, health_stats)
         
         # Embed and store in Pinecone vector database
-        # Only embed if there's meaningful content to embed
-        print("Checking if there's meaningful content to embed")
         if diary_obj or mood_tracker or expense_tracker or health_stats:
-            print("Embedding and storing in Pinecone vector database")
             upsert_to_pinecone(user_id, local_date, diary_obj, mood_tracker, expense_tracker, health_stats)
-            print("Embedding and storing in Pinecone vector database completed")
         
         if result["upserted"]:
             return jsonify({
@@ -250,6 +253,8 @@ def get_diary_entry():
                 for log_entry in diary["update_log"]:
                     if "timestamp" in log_entry and isinstance(log_entry["timestamp"], datetime.datetime):
                         log_entry["timestamp"] = log_entry["timestamp"].isoformat()
+
+            enrich_diary_image_for_response(diary)
             
             return jsonify({"diary": diary}), 200
         else:
@@ -313,6 +318,8 @@ def get_month_diaries_entries():
                 for log_entry in diary["update_log"]:
                     if "timestamp" in log_entry and isinstance(log_entry["timestamp"], datetime.datetime):
                         log_entry["timestamp"] = log_entry["timestamp"].isoformat()
+
+            enrich_diary_image_for_response(diary)
         
         return jsonify({"diaries": diaries}), 200
     except Exception as e:
@@ -353,6 +360,8 @@ def get_all_diaries_entries():
                 for log_entry in diary["update_log"]:
                     if "timestamp" in log_entry and isinstance(log_entry["timestamp"], datetime.datetime):
                         log_entry["timestamp"] = log_entry["timestamp"].isoformat()
+
+            enrich_diary_image_for_response(diary)
         
         return jsonify({
             "diaries": diaries,

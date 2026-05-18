@@ -33,7 +33,10 @@ def upsert_diary(user_id, local_date, timezone, diary=None, mood_tracker=None, e
         )
         
         if diary is not None:
-            update_data["diary"] = diary
+            existing_diary = existing.get("diary", {})
+            if not isinstance(existing_diary, dict):
+                existing_diary = {}
+            update_data["diary"] = {**existing_diary, **diary}
         if mood_tracker is not None:
             update_data["mood_tracker"] = mood_tracker
         if expense_tracker is not None:
@@ -124,6 +127,13 @@ def get_or_create_today_diary(user_id, timezone="UTC"):
             )
     
     return diary
+
+def set_diary_image_url(user_id, local_date, image_url):
+    """Persist OCR diary image path on the diary document for this date."""
+    mongo.db.diaries.update_one(
+        {"user_id": ObjectId(user_id), "local_date": local_date},
+        {"$set": {"diary.image_url": image_url}}
+    )
 
 def increment_image_extraction_count(user_id, local_date):
     """Increment image extraction count for today's diary"""

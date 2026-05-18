@@ -1,29 +1,32 @@
-import requests
 import os
+from pathlib import Path
+
+import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # ZeptoMail API configuration
 ZEPTOMAIL_URL = "https://api.zeptomail.in/v1.1/email"
 ZEPTOMAIL_TOKEN = os.getenv("ZEPTOMAIL_TOKEN")
 ZEPTOMAIL_DOMAIN = os.getenv("ZEPTOMAIL_DOMAIN")
 
-def send_welcome_email(email, name):
+
+def send_welcome_email(recipient_email, name):
     """
     Send welcome email to new user
-    
+
     Args:
-        email (str): User's email address
+        recipient_email (str): User's email address
         name (str): User's name
-    
+
     Returns:
         bool: True if email sent successfully, False otherwise
     """
     try:
         payload = {
             "from": {"address": ZEPTOMAIL_DOMAIN},
-            "to": [{"email_address": {"address": email, "name": name}}],
+            "to": [{"email_address": {"address": recipient_email, "name": name}}],
             "subject": "Welcome to Diary App!",
             "htmlbody": f"""
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -37,22 +40,30 @@ def send_welcome_email(email, name):
             </div>
             """
         }
-        
+
         headers = {
-            'accept': "application/json",
-            'content-type': "application/json",
-            'authorization': ZEPTOMAIL_TOKEN,
+            "accept": "application/json",
+            "content-type": "application/json",
+            "authorization": ZEPTOMAIL_TOKEN,
         }
-        
+
         response = requests.post(ZEPTOMAIL_URL, json=payload, headers=headers)
-        
+
         if response.status_code == 200:
             print("Welcome email sent successfully")
             return True
-        else:
-            print(f"Welcome email sending failed: {response.status_code} - {response.text}")
-            return False
-            
+        print(f"Welcome email sending failed: {response.status_code} - {response.text}")
+        return False
+
     except Exception as e:
         print("Email Error:", e)
         return False
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) != 3:
+        print("Usage: python -m utils.mail <email> <name>")
+        sys.exit(1)
+    send_welcome_email(sys.argv[1], sys.argv[2])
