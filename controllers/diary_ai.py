@@ -35,8 +35,9 @@ DIARY_IMAGES_FOLDER = "uploads/diary_images"
 DIARY_AUDIO_FOLDER = "uploads/diary_audio"
 
 # Diary chat guardrails (hardcoded thresholds)
-DIARY_CHAT_MIN_MATCH_SCORE = 0.5
-DIARY_CHAT_CLASSIFIER_MIN_CONFIDENCE = 0.5
+# Only refuse when classifier is confident the question is NOT diary-related.
+DIARY_CHAT_OFF_TOPIC_MIN_CONFIDENCE = 0.65
+DIARY_CHAT_TOP_K = 5
 DIARY_QUERY_CLASSIFIER_SCHEMA = {
     "name": "diary_query_classification",
     "strict": True,
@@ -50,11 +51,6 @@ DIARY_QUERY_CLASSIFIER_SCHEMA = {
         "additionalProperties": False,
     },
 }
-CHAT_REFUSAL_NO_CONTEXT = (
-    "I can only answer questions using your saved diary entries, and I couldn't "
-    "find anything relevant for that. Try asking about moods, expenses, health, "
-    "or something you wrote in your diary."
-)
 CHAT_REFUSAL_OFF_TOPIC = (
     "I can only help with questions about your diary entries. "
     "Please ask something related to what you've written."
@@ -579,11 +575,14 @@ def chat_with_diary():
                 {
                     "role": "system",
                     "content": (
-                        "Classify whether the user question is about their personal diary data "
-                        "(entries, moods, expenses, health, habits, reflections). "
-                        "Set is_diary_related false for general knowledge, jokes, weather, coding, "
-                        "news, or anything outside their diary. "
-                        "confidence is how certain you are (0.0 to 1.0)."
+                        "Classify user questions for a personal diary app. "
+                        "Treat as diary-related (is_diary_related true) when the question could "
+                        "relate to the user's entries, moods, expenses, health, habits, feelings, "
+                        "productivity, relationships, goals, or reflections — even if vague. "
+                        "Only set is_diary_related false for clearly unrelated topics: general knowledge, "
+                        "jokes, weather forecasts, coding help, news, celebrities, or homework unrelated "
+                        "to their diary. When unsure, prefer is_diary_related true with moderate confidence. "
+                        "confidence is certainty from 0.0 to 1.0."
                     ),
                 },
                 {"role": "user", "content": query},
@@ -593,7 +592,10 @@ def chat_with_diary():
         is_diary_related = bool(classification["is_diary_related"])
         confidence = max(0.0, min(1.0, float(classification["confidence"])))
 
-        if not is_diary_related or confidence < DIARY_CHAT_CLASSIFIER_MIN_CONFIDENCE:
+        if (
+            not is_diary_related
+            and confidence >= DIARY_CHAT_OFF_TOPIC_MIN_CONFIDENCE
+        ):
             def refuse_off_topic():
                 start = {
                     "type": "start",
@@ -628,7 +630,7 @@ def chat_with_diary():
         try:
             search_results = pinecone_index.query(
                 vector=query_embedding,
-                top_k=3,
+                top_k=DIARY_CHAT_TOP_K,
                 include_metadata=True,
                 filter={"user_id": user_id}
             )
@@ -638,45 +640,33 @@ def chat_with_diary():
         context_parts = []
         matches = search_results.matches if search_results.matches else []
         for match in matches:
-            score = getattr(match, "score", None)
-            if score is not None and score < DIARY_CHAT_MIN_MATCH_SCORE:
-                continue
             metadata = match.metadata or {}
             date = metadata.get("date", "Unknown date")
             content = metadata.get("content") or metadata.get("text") or ""
             if content and content.strip():
                 context_parts.append(f"Date: {date}\nEntry: {content.strip()}")
 
-        if not context_parts:
-            def refuse_no_context():
-                start = {
-                    "type": "start",
-                    "matches_found": 0,
-                    "guardrail": "no_context",
-                }
-                yield f"data: {json.dumps(start)}\n\n"
-                yield f"data: {json.dumps({'type': 'chunk', 'text': CHAT_REFUSAL_NO_CONTEXT})}\n\n"
-                yield f"data: {json.dumps({'type': 'complete'})}\n\n"
-
-            return Response(
-                stream_with_context(refuse_no_context()),
-                mimetype="text/event-stream",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        matches_found = len(context_parts)
+        if context_parts:
+            context = "\n\n---\n\n".join(context_parts)
+        else:
+            context = (
+                "No specific diary entries were retrieved for this question. "
+                "The user may have few or no matching logs yet."
             )
 
-        matches_found = len(context_parts)
-
-        context = "\n\n---\n\n".join(context_parts)
         system_message = (
-            "You are a diary assistant. Answer ONLY using facts in <DIARY_CONTEXT>. "
-            "Never use outside knowledge. If the answer is not in <DIARY_CONTEXT>, say: "
-            '"I couldn\'t find that in your diary entries. Try rephrasing or ask about something you logged." '
-            "Keep responses to 2-3 sentences."
+            "You are a warm diary assistant. Prefer facts from <DIARY_CONTEXT> when available. "
+            "You may give brief, practical reflection based on context. "
+            "If context is empty or does not mention the answer, say you could not find that "
+            "detail in their diary yet and suggest what they could log or how to rephrase. "
+            "Do not invent specific events, amounts, or dates not in context. "
+            "Keep responses to 2-4 sentences."
         )
         user_message = (
             f"<DIARY_CONTEXT>\n{context}\n</DIARY_CONTEXT>\n\n"
             f"User question: {query}\n\n"
-            "Answer using ONLY <DIARY_CONTEXT>."
+            "Answer helpfully using <DIARY_CONTEXT> when possible."
         )
         
         # Stream response using OpenAI GPT
