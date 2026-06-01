@@ -35,12 +35,30 @@ def normalize_timezone(timezone):
     except pytz.exceptions.UnknownTimeZoneError:
         return "UTC"
 
+
+def _normalize_digit_string(value, min_len, max_len):
+    """Coerce phone/OTP from JSON (may be int) to a validated digit string."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and value != int(value):
+            return None
+        value = str(int(value))
+    elif isinstance(value, str):
+        value = value.strip()
+    else:
+        return None
+    if not value.isdigit() or not (min_len <= len(value) <= max_len):
+        return None
+    return value
+
+
 @limiter.limit("5 per hour", key_func=get_remote_address)
 def request_otp():
-    data = request.get_json()
-    phone = data.get("phone")
+    data = request.get_json() or {}
+    phone = _normalize_digit_string(data.get("phone"), 7, 15)
     country_code = data.get("country_code", "+91")
-    if not phone or not phone.isdigit() or not (7 <= len(phone) <= 15):
+    if not phone:
         return jsonify({"error": "Phone number must be between 7 and 15 digits."}), 400
     otp = TEST_PHONE_OTP if phone == TEST_PHONE_NUMBER else str(random.randint(100000, 999999))
     try:
@@ -55,13 +73,13 @@ def request_otp():
         return jsonify({"error": "Failed to send OTP. Please check the phone number and try again."}), 500
 
 def verify_otp():
-    data = request.get_json()
-    phone = data.get("phone")
-    otp = data.get("otp")
+    data = request.get_json() or {}
+    phone = _normalize_digit_string(data.get("phone"), 7, 15)
+    otp = _normalize_digit_string(data.get("otp"), 6, 6)
     country_code = data.get("country_code", "+91")
-    if not phone or not phone.isdigit() or not (7 <= len(phone) <= 15):
+    if not phone:
         return jsonify({"error": "Phone number must be between 7 and 15 digits."}), 400
-    if not otp or not otp.isdigit() or len(otp) != 6:
+    if not otp:
         return jsonify({"error": "OTP must be a 6-digit number."}), 400
     
     try:
