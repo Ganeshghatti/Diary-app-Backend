@@ -1,5 +1,6 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from config.db import init_db
@@ -17,10 +18,16 @@ def block_profile_pic(filename):
     """Block public access to profile pictures"""
     return jsonify({"error": "Access denied. Images are not publicly accessible."}), 403
 
+DIARY_IMAGES_FOLDER = "uploads/diary_images"
+
+
 @app.route("/uploads/diary_images/<filename>")
-def block_diary_image(filename):
-    """Block public access to diary images"""
-    return jsonify({"error": "Access denied. Images are not publicly accessible."}), 403
+def serve_diary_image(filename):
+    """Serve diary images for public URL access."""
+    safe_name = secure_filename(filename)
+    if not safe_name or safe_name != filename:
+        return jsonify({"error": "Invalid filename."}), 400
+    return send_from_directory(DIARY_IMAGES_FOLDER, safe_name)
 
 # Global rate limit (e.g., 2000 requests per hour per IP)
 limiter = Limiter(app=app, key_func=get_remote_address, default_limits=["2000 per hour"])

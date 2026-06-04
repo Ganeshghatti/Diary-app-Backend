@@ -8,7 +8,7 @@ from models.diary import (
     set_diary_image_url,
     upsert_diary
 )
-from utils.diary_image import diary_image_path_to_data_uri
+from utils.diary_image import diary_image_public_url
 import pytesseract
 from PIL import Image
 import os
@@ -232,11 +232,9 @@ def extract_text_from_image():
         # Increment usage count in today's diary entry
         increment_image_extraction_count(user_id, local_date)
 
-        image_data_uri = diary_image_path_to_data_uri(image_path) or image_path
-        
         return jsonify({
             "text": text.strip(),
-            "image_url": image_data_uri,
+            "image_url": diary_image_public_url(image_path),
             "remaining_uses": 3 - (current_count + 1)
         }), 200
     except Exception as e:
@@ -325,11 +323,9 @@ def extract_text_from_image_google_vision():
         # Increment usage count in today's diary entry
         increment_image_extraction_count(user_id, local_date)
 
-        image_data_uri = diary_image_path_to_data_uri(image_path) or image_path
-        
         return jsonify({
             "text": extracted_text.strip(),
-            "image_url": image_data_uri,
+            "image_url": diary_image_public_url(image_path),
             "remaining_uses": 3 - (current_count + 1)
         }), 200
     except Exception as e:
